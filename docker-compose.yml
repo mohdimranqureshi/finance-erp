@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: finance-erp-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: finance_erp
+      POSTGRES_USER: finance_erp
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local_dev_only_change_me}
+    ports:
+      - "127.0.0.1:5434:5432"
+    volumes:
+      - finance_erp_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U finance_erp -d finance_erp"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+volumes:
+  finance_erp_pgdata:

@@ -1,0 +1,39 @@
+server:
+  port: ${PORT:8080}
+  forward-headers-strategy: framework
+  error:
+    include-message: never
+    include-binding-errors: never
+    include-stacktrace: never
+    include-exception: false
+spring:
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    hikari:
+      maximum-pool-size: ${DB_POOL_MAX:15}
+      minimum-idle: ${DB_POOL_MIN:2}
+      connection-timeout: 30000
+      validation-timeout: 5000
+  flyway:
+    enabled: true
+    url: ${FLYWAY_DB_URL:${DB_URL}}
+    user: ${FLYWAY_DB_USERNAME:${DB_USERNAME}}
+    password: ${FLYWAY_DB_PASSWORD:${DB_PASSWORD}}
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+logging:
+  level:
+    root: INFO
+    org.springframework.security: WARN
+
+app:
+  registration:
+    enabled: ${APP_PUBLIC_REGISTRATION_ENABLED:false}
