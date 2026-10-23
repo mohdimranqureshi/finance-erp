@@ -9,6 +9,12 @@ import java.util.Map;
 
 @RestControllerAdvice
 public class ApiExceptionHandler {
+	@ExceptionHandler(com.financeerp.ai.AiUnavailableException.class)
+	@ResponseStatus(HttpStatus.SERVICE_UNAVAILABLE)
+	public Map<String, String> aiUnavailable(com.financeerp.ai.AiUnavailableException ex) {
+		return Map.of("error", "AI_UNAVAILABLE", "message", ex.getMessage());
+	}
+
 	@ExceptionHandler(IllegalArgumentException.class)
 	@ResponseStatus(HttpStatus.BAD_REQUEST)
 	public Map<String, String> badRequest(IllegalArgumentException ex) {

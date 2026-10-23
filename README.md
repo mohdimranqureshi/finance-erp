@@ -79,6 +79,48 @@ This is not a claim of production readiness. The following still require impleme
 
 See `docs/PRODUCTION_READINESS.md` for the mandatory release gate and `docs/INDIA_ACCOUNTING_SCOPE.md` for accounting features that remain out of scope. These additions are not a claim that the app is ready for live financial records; local build, integration tests, security review and accounting-domain validation are still required.
 
+## Milestone 5: India GST sub-ledgers (Flyway V6)
+
+Workflow: set the company GST profile (state, GSTIN, PAN) → set up the Indian chart of accounts → add customers/vendors → create GST sales invoices and purchase bills → **Issue**/**Book** creates a draft journal → a different user approves → post. Reports: GST summary, P&L, balance sheet.
+
+- `PUT /api/v1/companies/{id}/india/profile`, `POST .../india/chart-of-accounts`, `GET /api/v1/india/reference`
+- `POST|GET .../parties`, `.../sales-invoices` (+ `/{id}/issue`), `.../purchase-bills` (+ `/{id}/book`)
+- `GET .../reports/gst-summary|profit-and-loss|balance-sheet`
+- `POST .../ai/suggest-bill-coding` (keyword rules only; no LLM configured)
+
+Not yet built: GST return filing, e-invoicing, e-way bills, RCM, credit notes, payments and bank reconciliation. See `docs/INDIA_ACCOUNTING_SCOPE.md`. GST/TDS rates are reference data to be verified by a qualified professional.
+
+## Milestone 6: settlements, reconciliation, notes, compliance data (Flyway V7)
+
+- `POST .../sales-invoices/{id}/receipts`, `POST .../purchase-bills/{id}/payments`, `GET .../payments`, `GET .../open-items` (ageing)
+- `POST .../sales-invoices/{id}/credit-notes`, `POST .../purchase-bills/{id}/debit-notes`, `GET .../adjustment-notes`
+- `POST|GET .../bank/statement-lines`, `POST .../bank/statement-lines/{id}/match|unmatch`, `GET .../bank/reconciliation`
+- `GET .../gst/gstr1`, `GET .../sales-invoices/{id}/e-invoice-payload`, `POST .../sales-invoices/{id}/e-way-bill-payload`, `POST .../sales-invoices/{id}/irn`
+- `POST .../year-end/closing-journal`
+- `POST .../sales-invoices/{id}/revenue-schedule`, `POST .../revenue-schedules/recognize`, `GET .../revenue-schedules` (Flyway V8): defers invoice revenue to Deferred Revenue (re-run chart setup to add account 2300), then drafts monthly recognition journals. Straight-line only; a full month is recognised from the start month.
+
+Payloads are generated for review and are never transmitted to GST portals; IRN and e-way bill numbers come from the portal/GSP. Every ledger effect is a draft journal that needs independent approval. Not built: portal/GSP integration, GSTR-3B filing, reverse charge, payroll, inventory, fixed assets, multi-currency, consolidation, revenue recognition schedules.
+
+## Milestone 7: AI layer (Flyway V9)
+
+The LLM proposes; people approve. Output is validated on the server (GSTIN checksum, HSN/SAC, GST slabs by date, duplicate bills, totals, chart-of-accounts membership, balanced journals), stored as a proposal, and only becomes a DRAFT document when a person with the Owner or Accountant role accepts it. Drafts still go through independent maker-checker approval, so AI can never approve or post.
+
+- `POST .../ai/extract-bill` (pasted invoice text to a draft purchase bill proposal), `POST .../ai/draft-journal` (instruction to a journal proposal)
+- `GET .../ai/proposals`, `POST .../ai/proposals/{id}/accept|reject`
+- `POST .../ai/ask` answers only from the company's P&L, balance sheet, GST summary and open items
+- `GET .../ai/review[?narrative=true]` runs deterministic close checks (stuck journals, duplicate bills, unmatched bank lines, overdue receivables, open old periods); the AI only phrases the summary
+
+Any OpenAI-compatible chat-completions endpoint works, including a local one. It is off by default:
+
+```cmd
+set AI_ENABLED=true
+set AI_BASE_URL=https://api.openai.com/v1
+set AI_API_KEY=your-key
+set AI_MODEL=gpt-4o-mini
+```
+
+For the local profile use the properties `app.ai.enabled`, `app.ai.base-url`, `app.ai.api-key`, `app.ai.model` (or `APP_AI_*` environment variables). `https` is required except for localhost. Invoice text and company figures are sent to the provider you configure, so choose one that is acceptable for your data-protection obligations (including the DPDP Act). Only a hash and length of source text are stored. Keep the API key in a secret manager.
+
 ## Local backup and restore drill (Windows CMD)
 
 ```cmd

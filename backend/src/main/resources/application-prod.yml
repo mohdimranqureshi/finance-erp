@@ -37,3 +37,8 @@ logging:
 app:
   registration:
     enabled: ${APP_PUBLIC_REGISTRATION_ENABLED:false}
+  ai:
+    enabled: ${AI_ENABLED:false}
+    base-url: ${AI_BASE_URL:https://api.openai.com/v1}
+    api-key: ${AI_API_KEY:}
+    model: ${AI_MODEL:gpt-4o-mini}
