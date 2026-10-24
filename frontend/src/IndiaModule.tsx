@@ -124,7 +124,7 @@ export default function IndiaModule({ companyId, accounts, onLedgerChanged }: { 
         <label>City<input value={city} onChange={e => setCity(e.target.value)} maxLength={100} /></label>
         <label>PIN code<input value={pin} onChange={e => setPin(e.target.value)} pattern="[1-9][0-9]{5}" maxLength={6} /></label>
         <button disabled={busy}>Save profile</button>
-        <button type="button" className="secondary" disabled={busy} onClick={seedChart}><Landmark size={15} />Set up Indian chart of accounts</button>
+        <button type="button" className="secondary wide" disabled={busy} onClick={seedChart}><Landmark size={15} />Set up Indian chart of accounts</button>
       </form>
     </section>
 

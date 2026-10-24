@@ -3,3 +3,11 @@ spring:
     url: jdbc:postgresql://localhost:5432/finance_erp
     username: postgres
     password: Mega@2222
+
+app:
+  ai:
+    enabled: ${AI_ENABLED:false}
+    # Defaults to a local Ollama server; plain http is accepted only for localhost.
+    base-url: ${AI_BASE_URL:http://localhost:11434/v1}
+    api-key: ${AI_API_KEY:}
+    model: ${AI_MODEL:qwen2.5:7b-instruct}

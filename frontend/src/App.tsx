@@ -1,51 +1,135 @@
-import {useEffect,useState} from 'react';
-import {BookOpen,Building2,Bot,FileText,LayoutDashboard,LogOut,Maximize2,Moon,Plus,RefreshCw,ShieldCheck,Sparkles,Sun,X} from 'lucide-react';
-import {api,money,setBasicAuth,setUnauthorizedHandler} from './api';
-import IndiaModule from './IndiaModule';
-import IndiaOps from './IndiaOps';
+import {useCallback,useEffect,useState} from 'react';
+import {api,setBasicAuth,setUnauthorizedHandler} from './api';
+import {Alert} from './ui';
+import Sidebar from './components/Sidebar';
+import TopBar from './components/TopBar';
+import CompanyStrip from './components/CompanyStrip';
+import AiDock from './components/AiDock';
+import SignInView from './views/SignInView';
+import OverviewView from './views/OverviewView';
+import CompanyView from './views/CompanyView';
+import UsersView from './views/UsersView';
+import JournalsView from './views/JournalsView';
 import AiWorkspace from './AiWorkspace';
-type Company={id:number;name:string;baseCurrency:string;status:string}; type Account={id:number;code:string;name:string;accountType:string}; type Journal={id:number;journalDate:string;description:string;status:string;reversalOfJournalId?:number|null;reversedByJournalId?:number|null}; type TrialRow={accountId:number;code:string;name:string;accountType:string;debitTotal:number;creditTotal:number};
+import type {Account,Company,Journal,Shell,TrialRow,View} from './types';
 const IDLE_MS=15*60*1000;
-const PAGES={overview:{title:'Overview',subtitle:'Accounting you can inspect, verify, and trust.'},company:{title:'Company & accounts',subtitle:'Manage your team and chart of accounts.'},journals:{title:'Journals & ledger',subtitle:'Create, approve and post journals, and check the trial balance.'},ai:{title:'AI assistant',subtitle:'Ask questions, draft entries and review the close. AI proposes, people approve.'}};
+const PAGES:Record<View,{title:string;subtitle:string}>={overview:{title:'Overview',subtitle:'Accounting you can inspect, verify, and trust.'},company:{title:'Company & accounts',subtitle:'Manage your team and chart of accounts.'},users:{title:'Users',subtitle:'Application accounts and administrator access.'},journals:{title:'Journals & ledger',subtitle:'Create, approve and post journals, and check the trial balance.'},ai:{title:'AI assistant',subtitle:'Ask questions, draft entries and review the close. AI proposes, people approve.'}};
 export default function App(){
- const [email,setEmail]=useState(''),[password,setPassword]=useState(''),[displayName,setDisplayName]=useState(''),[authenticated,setAuthenticated]=useState(false),[isAdmin,setIsAdmin]=useState(false),[newUserEmail,setNewUserEmail]=useState(''),[newUserName,setNewUserName]=useState(''),[newUserPassword,setNewUserPassword]=useState(''),[inviteToken,setInviteToken]=useState(()=>new URLSearchParams(window.location.hash.slice(1)).get('invite')||''),[createdInvitationToken,setCreatedInvitationToken]=useState('');
- const [companies,setCompanies]=useState<Company[]>([]),[companyId,setCompanyId]=useState<number|''>(''),[accounts,setAccounts]=useState<Account[]>([]),[journals,setJournals]=useState<Journal[]>([]),[trial,setTrial]=useState<TrialRow[]>([]);
- const [companyName,setCompanyName]=useState(''),[view,setView]=useState<'overview'|'company'|'journals'|'ai'>('overview'),[aiOpen,setAiOpen]=useState(false),[theme,setTheme]=useState<'light'|'dark'>(()=>(localStorage.getItem('theme') as 'light'|'dark'|null)||(window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light')),[memberEmail,setMemberEmail]=useState(''),[memberRole,setMemberRole]=useState('APPROVER'),[code,setCode]=useState(''),[name,setName]=useState(''),[type,setType]=useState('ASSET'),[desc,setDesc]=useState('Opening capital'),[date,setDate]=useState(new Date().toISOString().slice(0,10)),[debit,setDebit]=useState(''),[credit,setCredit]=useState(''),[amount,setAmount]=useState('100000'),[message,setMessage]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false);
- async function loadCompanies(){const rows=await api<Company[]>('/api/v1/companies');setCompanies(rows);if(!companyId&&rows.length)setCompanyId(rows[0].id)}
- async function loadData(id:number){const [a,j]=await Promise.all([api<Account[]>(`/api/v1/companies/${id}/accounts`),api<Journal[]>(`/api/v1/companies/${id}/journals`)]);setAccounts(a);setJournals(j);const today=new Date().toISOString().slice(0,10);setTrial(await api<TrialRow[]>(`/api/v1/companies/${id}/reports/trial-balance?from=${today.slice(0,4)}-01-01&to=${today}`));}
- async function signIn(){if(!email.trim()||!password)throw Error('Enter your email and password.');setBasicAuth(btoa(`${email.trim()}:${password}`));await loadCompanies();const me=await api<{admin:boolean}>('/api/v1/auth/me');setIsAdmin(me.admin);setAuthenticated(true);setMessage('Signed in. Company access is enforced by the API.')}
- async function createUser(){if(newUserPassword.length<12)throw Error('Use a password with at least 12 characters.');await api('/api/v1/auth/register',{method:'POST',body:JSON.stringify({email:newUserEmail.trim(),password:newUserPassword,displayName:newUserName.trim()})});setMessage(`Account created for ${newUserEmail.trim()}. Share the password through a trusted channel, then add them to a company.`);setNewUserEmail('');setNewUserName('');setNewUserPassword('')}
- async function acceptInvitation(){if(!inviteToken)throw Error('Invitation token is missing. Open the invitation link from the company owner.');if(password.length<12)throw Error('Use a password with at least 12 characters.');const accepted=await api<{email:string}>('/api/v1/auth/accept-invitation',{method:'POST',body:JSON.stringify({token:inviteToken,password,displayName})});setEmail(accepted.email);setInviteToken('');window.history.replaceState({},'',window.location.pathname+window.location.search);setPassword('');setMessage('Invitation accepted. Sign in with the email address invited by the company owner and the password you just created.')}
- async function inviteMember(){if(!companyId||!memberEmail.trim())throw Error('Select a company and enter an email address.');const result=await api<{invitationToken:string;expiresAt:string;email:string;role:string}>(`/api/v1/companies/${companyId}/invitations`,{method:'POST',body:JSON.stringify({email:memberEmail.trim(),role:memberRole})});setCreatedInvitationToken(result.invitationToken);setMessage(`Invitation created for ${result.email}; expires ${new Date(result.expiresAt).toLocaleString()}. Share the token only through a trusted channel.`)}
+ const [email,setEmail]=useState('');
+ const [password,setPassword]=useState('');
+ const [displayName,setDisplayName]=useState('');
+ const [authenticated,setAuthenticated]=useState(false);
+ const [isAdmin,setIsAdmin]=useState(false);
+ const [inviteToken,setInviteToken]=useState(()=>new URLSearchParams(window.location.hash.slice(1)).get('invite')||'');
+ const [companies,setCompanies]=useState<Company[]>([]);
+ const [companyId,setCompanyId]=useState<number|''>('');
+ const [accounts,setAccounts]=useState<Account[]>([]);
+ const [journals,setJournals]=useState<Journal[]>([]);
+ const [trial,setTrial]=useState<TrialRow[]>([]);
+ const [view,setView]=useState<View>('overview');
+ const [aiOpen,setAiOpen]=useState(false);
+ const [theme,setTheme]=useState<'light'|'dark'>(()=>(localStorage.getItem('theme') as 'light'|'dark'|null)||(window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'));
+ const [message,setMessage]=useState('');
+ const [error,setError]=useState('');
+ const [busy,setBusy]=useState(false);
+
+ const run=useCallback(async(fn:()=>Promise<void>)=>{
+  setBusy(true);setError('');setMessage('');
+  try{await fn();return true}
+  catch(e){setError(e instanceof Error?e.message:'Unexpected error');return false}
+  finally{setBusy(false)}
+ },[]);
+ const shell:Shell={busy,run,notify:setMessage};
+
+ async function loadCompanies(){
+  const rows=await api<Company[]>('/api/v1/companies');
+  setCompanies(rows);
+  if(!companyId&&rows.length)setCompanyId(rows[0].id);
+ }
+ const loadData=useCallback(async(id:number)=>{
+  const [nextAccounts,nextJournals]=await Promise.all([
+   api<Account[]>(`/api/v1/companies/${id}/accounts`),
+   api<Journal[]>(`/api/v1/companies/${id}/journals`)]);
+  setAccounts(nextAccounts);setJournals(nextJournals);
+  const today=new Date().toISOString().slice(0,10);
+  setTrial(await api<TrialRow[]>(`/api/v1/companies/${id}/reports/trial-balance?from=${today.slice(0,4)}-01-01&to=${today}`));
+ },[]);
+ const reload=useCallback(async()=>{if(companyId!=='')await loadData(Number(companyId))},[companyId,loadData]);
+
+ async function signIn(){
+  if(!email.trim()||!password)throw Error('Enter your email and password.');
+  setBasicAuth(btoa(`${email.trim()}:${password}`));
+  await loadCompanies();
+  const me=await api<{admin:boolean}>('/api/v1/auth/me');
+  setIsAdmin(me.admin);setAuthenticated(true);
+  setMessage('Signed in. Company access is enforced by the API.');
+ }
+ async function acceptInvitation(){
+  if(!inviteToken)throw Error('Invitation token is missing. Open the invitation link from the company owner.');
+  if(password.length<12)throw Error('Use a password with at least 12 characters.');
+  const accepted=await api<{email:string}>('/api/v1/auth/accept-invitation',{method:'POST',body:JSON.stringify({token:inviteToken,password,displayName})});
+  setEmail(accepted.email);setInviteToken('');
+  window.history.replaceState({},'',window.location.pathname+window.location.search);
+  setPassword('');
+  setMessage('Invitation accepted. Sign in with the email address invited by the company owner and the password you just created.');
+ }
+ function signOut(notice=''){
+  setBasicAuth('');
+  setAuthenticated(false);setIsAdmin(false);setPassword('');
+  setCompanies([]);setCompanyId('');setAccounts([]);setJournals([]);setTrial([]);
+  setAiOpen(false);setView('overview');setError('');setMessage(notice);
+ }
+ const createCompany=(name:string)=>run(async()=>{
+  if(!name.trim())throw Error('Enter a company name.');
+  const created=await api<Company>('/api/v1/companies',{method:'POST',body:JSON.stringify({name,baseCurrency:'INR'})});
+  await loadCompanies();setCompanyId(created.id);
+  setMessage(`Created company ${created.name}.`);
+ });
+
  useEffect(()=>{document.documentElement.dataset.theme=theme;localStorage.setItem('theme',theme)},[theme]);
- function signOut(notice=''){setBasicAuth('');setAuthenticated(false);setIsAdmin(false);setPassword('');setCompanies([]);setCompanyId('');setAccounts([]);setJournals([]);setTrial([]);setCreatedInvitationToken('');setAiOpen(false);setView('overview');setError('');setMessage(notice)}
  useEffect(()=>{setUnauthorizedHandler(()=>{setBasicAuth('');if(authenticated)signOut('Your session has expired. Please sign in again.')});return()=>setUnauthorizedHandler(null)},[authenticated]);
  useEffect(()=>{if(!authenticated)return;let t=0;const events=['mousedown','keydown','touchstart','scroll'];const reset=()=>{window.clearTimeout(t);t=window.setTimeout(()=>signOut('Signed out after 15 minutes of inactivity.'),IDLE_MS)};events.forEach(e=>window.addEventListener(e,reset,{passive:true}));reset();return()=>{window.clearTimeout(t);events.forEach(e=>window.removeEventListener(e,reset))}},[authenticated]);
- useEffect(()=>{if(companyId)loadData(Number(companyId)).catch(e=>setError(e.message));},[companyId]);
- async function run(fn:()=>Promise<void>){setBusy(true);setError('');setMessage('');try{await fn()}catch(e){setError(e instanceof Error?e.message:'Unexpected error')}finally{setBusy(false)}}
- async function createCompany(){if(!companyName.trim())throw Error('Enter a company name.');const c=await api<Company>('/api/v1/companies',{method:'POST',body:JSON.stringify({name:companyName,baseCurrency:'INR'})});setCompanyName('');await loadCompanies();setCompanyId(c.id);setMessage(`Created company ${c.name}.`)}
- async function createAccount(){if(!companyId)throw Error('Create or select a company first.');await api(`/api/v1/companies/${companyId}/accounts`,{method:'POST',body:JSON.stringify({code,name,accountType:type})});setCode('');setName('');await loadData(Number(companyId));setMessage('Account created.')}
- async function addMember(){if(!companyId||!memberEmail.trim())throw Error('Select a company and enter the registered user email.');await api(`/api/v1/companies/${companyId}/members`,{method:'POST',body:JSON.stringify({email:memberEmail.trim(),role:memberRole})});setMemberEmail('');setMessage(`Added ${memberRole.toLowerCase()} member. They must sign in with their own account to approve journals.`)}
- async function createJournal(){if(!companyId||!debit||!credit)throw Error('Select a company and both accounts.');const v=Number(amount);if(!Number.isFinite(v)||v<=0)throw Error('Amount must be greater than zero.');const j=await api<Journal>(`/api/v1/companies/${companyId}/journals`,{method:'POST',body:JSON.stringify({journalDate:date,description:desc,lines:[{accountId:Number(debit),description:'Debit line',debit:v,credit:0},{accountId:Number(credit),description:'Credit line',debit:0,credit:v}]})});await loadData(Number(companyId));setMessage(`Draft journal #${j.id} created.`)}
- async function submitJournal(id:number){await api(`/api/v1/companies/${companyId}/journals/${id}/submit`,{method:'POST'});await loadData(Number(companyId));setMessage(`Journal #${id} submitted for independent approval.`)}
- async function approveJournal(id:number){await api(`/api/v1/companies/${companyId}/journals/${id}/approve`,{method:'POST'});await loadData(Number(companyId));setMessage(`Journal #${id} approved. It can now be posted.`)}
- async function postJournal(id:number){await api(`/api/v1/companies/${companyId}/journals/${id}/post`,{method:'POST'});await loadData(Number(companyId));setMessage(`Journal #${id} posted.`)}
- async function reverseJournal(id:number){if(!window.confirm(`Create an equal-and-opposite reversal for journal #${id}?`))return;const reversalDate=new Date().toISOString().slice(0,10);const r=await api<Journal>(`/api/v1/companies/${companyId}/journals/${id}/reverse`,{method:'POST',body:JSON.stringify({reversalDate})});await loadData(Number(companyId));setMessage(`Reversal draft #${r.id} created for journal #${id}. Submit it for approval before it affects the ledger.`)}
- const dt=trial.reduce((s,r)=>s+Number(r.debitTotal||0),0),ct=trial.reduce((s,r)=>s+Number(r.creditTotal||0),0);
- if(!authenticated) return <div className="auth-shell"><form className="auth-card" onSubmit={e=>{e.preventDefault();run(inviteToken?acceptInvitation:signIn)}}><div className="brand"><div className="mark"><BookOpen size={21}/></div><div><strong>FinoraAI</strong><small>FINANCE ERP</small></div></div><h1>{inviteToken?'Accept company invitation':'Sign in'}</h1><p>{inviteToken?'Create your account to join the company that invited you.':'Use your account to access only companies you belong to. Accounts are created by your administrator.'}</p>{error&&<div className="alert error">{error}</div>}{message&&<div className="alert success">{message}</div>}{!inviteToken&&<label>Email<input type="email" value={email} onChange={e=>setEmail(e.target.value)} autoComplete="username" required/></label>}{inviteToken&&<label>Display name<input value={displayName} onChange={e=>setDisplayName(e.target.value)} required/></label>}<label>Password<input type="password" value={password} onChange={e=>setPassword(e.target.value)} autoComplete={inviteToken?'new-password':'current-password'} minLength={inviteToken?12:1} required/></label>{inviteToken&&<small>Use at least 12 characters and a unique password.</small>}<button disabled={busy}>{busy?'Please wait…':inviteToken?'Accept invitation':'Sign in'}</button></form></div>;
- return <div className="shell"><aside className="sidebar"><div className="brand"><div className="mark"><BookOpen size={21}/></div><div><strong>FinoraAI</strong><small>FINANCE ERP</small></div></div><div className="navlabel">WORKSPACE</div><button className={`nav${view==='overview'?' active':''}`} onClick={()=>setView('overview')}><LayoutDashboard size={17}/>Overview</button><button className={`nav${view==='company'?' active':''}`} onClick={()=>setView('company')}><Building2 size={17}/>Company & accounts</button><button className={`nav${view==='journals'?' active':''}`} onClick={()=>setView('journals')}><FileText size={17}/>Journals & ledger</button><button className={`nav${view==='ai'?' active':''}`} onClick={()=>setView('ai')}><Bot size={17}/>AI assistant</button><div className="sidebottom"><ShieldCheck size={16}/><span>{email}<br/><small>Signed in</small></span></div></aside>
- <main className="main"><header className="topbar"><div><div className="eyebrow">FINANCE WORKSPACE / {PAGES[view].title.toUpperCase()}</div><h1>{PAGES[view].title}</h1><p>{PAGES[view].subtitle}</p></div><div className="topactions"><button className="secondary" aria-label="Toggle light or dark theme" onClick={()=>setTheme(theme==='dark'?'light':'dark')}>{theme==='dark'?<Sun size={15}/>:<Moon size={15}/>}{theme==='dark'?'Light':'Dark'}</button><button className="secondary" onClick={()=>run(async()=>{await loadCompanies();if(companyId)await loadData(Number(companyId))})}><RefreshCw size={15}/>Refresh</button><button className="secondary" onClick={()=>signOut()}><LogOut size={15}/>Sign out</button></div></header>
- {error&&<div className="alert error">{error}</div>}{message&&<div className="alert success">{message}</div>}
- <section className="companystrip"><div><label>ACTIVE COMPANY</label><select value={companyId} onChange={e=>setCompanyId(e.target.value?Number(e.target.value):'')}><option value="">Select company</option>{companies.map(c=><option key={c.id} value={c.id}>{c.name} · {c.baseCurrency}</option>)}</select></div><div className="inline"><input value={companyName} onChange={e=>setCompanyName(e.target.value)} placeholder="New company name"/><button disabled={busy} onClick={()=>run(createCompany)}><Plus size={15}/>Create company</button></div></section>
- {view==='ai'&&(companyId!==''?<AiWorkspace companyId={Number(companyId)} onChanged={()=>loadData(Number(companyId))}/>:<p className="empty">Select or create a company to use the AI assistant.</p>)}
- {view==='company'&&isAdmin&&<section className="panel below"><div className="panelhead"><div><h2>Create user account</h2><p>Only administrators can create accounts. Share the temporary password through a trusted channel.</p></div><span className="count">Admin</span></div><form className="accountform" onSubmit={e=>{e.preventDefault();run(createUser)}}><label>Display name<input value={newUserName} onChange={e=>setNewUserName(e.target.value)} required/></label><label>Email<input type="email" value={newUserEmail} onChange={e=>setNewUserEmail(e.target.value)} autoComplete="off" required/></label><label>Temporary password<input type="password" value={newUserPassword} onChange={e=>setNewUserPassword(e.target.value)} autoComplete="new-password" minLength={12} required/></label><button disabled={busy}><Plus size={15}/>Create account</button></form></section>}
- {view==='company'&&<section className="panel below"><div className="panelhead"><div><h2>Company team</h2><p>Add a separately registered user for independent journal approval</p></div><span className="count">Maker-checker</span></div><form className="accountform" onSubmit={e=>{e.preventDefault();run(addMember)}}><label>Registered user email<input type="email" value={memberEmail} onChange={e=>setMemberEmail(e.target.value)} placeholder="approver@company.in" required/></label><label>Role<select value={memberRole} onChange={e=>setMemberRole(e.target.value)}><option value="APPROVER">Approver</option><option value="ACCOUNTANT">Accountant</option><option value="VIEWER">Viewer</option></select></label><button disabled={busy||!companyId}><Plus size={15}/>Add existing user</button><button type="button" className="secondary" disabled={busy||!companyId} onClick={()=>run(inviteMember)}><Plus size={15}/>Create invitation</button></form>{createdInvitationToken&&<div className="alert success"><strong>One-time invitation token</strong><p>Send this token only through a trusted channel. Invite link format: <code>{window.location.origin}/#invite={createdInvitationToken}</code></p><button type="button" className="small secondary" onClick={()=>navigator.clipboard.writeText(`${window.location.origin}/#invite=${createdInvitationToken}`)}>Copy invitation link</button></div>}<p className="hint">Existing users can be added directly. New users can accept a one-time invitation; tokens expire after 48 hours.</p></section>}
- {view==='overview'&&<section className="stats"><div className="stat"><span>Chart of accounts</span><strong>{accounts.length}</strong><small>Configured accounts</small></div><div className="stat"><span>Journal entries</span><strong>{journals.length}</strong><small>{journals.filter(j=>j.status==='POSTED').length} posted</small></div><div className="stat"><span>Debits posted</span><strong>{money(dt)}</strong><small>Calendar year to date</small></div><div className="stat"><span>Credits posted</span><strong>{money(ct)}</strong><small>Calendar year to date</small></div></section>}
- {view==='company'&&<div className="grid"><section className="panel"><div className="panelhead"><div><h2>Chart of accounts</h2><p>Configure company-specific accounts</p></div><span className="count">{accounts.length} accounts</span></div><form className="accountform" onSubmit={e=>{e.preventDefault();run(createAccount)}}><label>Code<input value={code} onChange={e=>setCode(e.target.value)} placeholder="1000" required/></label><label>Account name<input value={name} onChange={e=>setName(e.target.value)} placeholder="Bank" required/></label><label>Type<select value={type} onChange={e=>setType(e.target.value)}>{['ASSET','LIABILITY','EQUITY','INCOME','EXPENSE'].map(t=><option key={t}>{t}</option>)}</select></label><button disabled={busy||!companyId}><Plus size={15}/>Add account</button></form><div className="tablewrap"><table><thead><tr><th>Code</th><th>Account</th><th>Type</th></tr></thead><tbody>{accounts.map(a=><tr key={a.id}><td className="mono">{a.code}</td><td>{a.name}</td><td><span className="chip">{a.accountType}</span></td></tr>)}{!accounts.length&&<tr><td colSpan={3} className="empty">Create your first account above.</td></tr>}</tbody></table></div></section></div>}
- {view==='journals'&&<div className="grid"><section className="panel"><div className="panelhead"><div><h2>New journal</h2><p>Balanced double-entry transaction</p></div><span className="draft">DRAFT</span></div><form className="journalform" onSubmit={e=>{e.preventDefault();run(createJournal)}}><label>Description<input value={desc} onChange={e=>setDesc(e.target.value)} required/></label><label>Date<input type="date" value={date} onChange={e=>setDate(e.target.value)} required/></label><label>Debit account<select value={debit} onChange={e=>setDebit(e.target.value)} required><option value="">Select account</option>{accounts.map(a=><option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}</select></label><label>Credit account<select value={credit} onChange={e=>setCredit(e.target.value)} required><option value="">Select account</option>{accounts.map(a=><option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}</select></label><label>Amount (INR)<input type="number" min="0.01" step="0.01" value={amount} onChange={e=>setAmount(e.target.value)} required/></label><button disabled={busy||!companyId}><Plus size={15}/>Create draft journal</button></form><p className="hint">Maker-checker workflow is enforced by the API: the submitter cannot approve their own journal.</p></section></div>}
- {view==='journals'&&<>
- <section className="panel below"><div className="panelhead"><div><h2>Recent journals</h2><p>Draft → submitted → independently approved → posted</p></div><span className="count">{journals.length} total</span></div><div className="tablewrap"><table><thead><tr><th>Journal</th><th>Date</th><th>Description</th><th>Status</th><th>Action</th></tr></thead><tbody>{journals.map(j=><tr key={j.id}><td className="mono">JE-{String(j.id).padStart(5,'0')}</td><td>{j.journalDate}</td><td>{j.description}</td><td><span className={j.status==='POSTED'?'posted':j.status==='APPROVED'?'posted':'draft'}>{j.status}</span></td><td>{j.status==='DRAFT'?<button className="small" disabled={busy} onClick={()=>run(()=>submitJournal(j.id))}>Submit for approval</button>:j.status==='SUBMITTED'?<button className="small" disabled={busy} onClick={()=>run(()=>approveJournal(j.id))}>Approve</button>:j.status==='APPROVED'?<button className="small" disabled={busy} onClick={()=>run(()=>postJournal(j.id))}>Post approved</button>:j.status==='POSTED'&&!j.reversalOfJournalId&&!j.reversedByJournalId?<button className="small secondary" disabled={busy} onClick={()=>run(()=>reverseJournal(j.id))}>Reverse</button>:<span className="muted">{j.reversalOfJournalId?`Reversal of #${j.reversalOfJournalId}`:j.reversedByJournalId?`Reversal draft #${j.reversedByJournalId} pending`:'In ledger'}</span>}</td></tr>)}{!journals.length&&<tr><td colSpan={5} className="empty">No journals yet. Create one above.</td></tr>}</tbody></table></div></section>
- <section className="panel below"><div className="panelhead"><div><h2>Trial balance</h2><p>Posted transactions only · current calendar year to date</p></div><span className="count">INR</span></div><div className="tablewrap"><table><thead><tr><th>Code</th><th>Account</th><th>Type</th><th className="right">Debits</th><th className="right">Credits</th></tr></thead><tbody>{trial.map(r=><tr key={r.accountId}><td className="mono">{r.code}</td><td>{r.name}</td><td>{r.accountType}</td><td className="right">{money(Number(r.debitTotal))}</td><td className="right">{money(Number(r.creditTotal))}</td></tr>)}{!trial.length&&<tr><td colSpan={5} className="empty">Post a journal to see the trial balance.</td></tr>}</tbody><tfoot><tr><th colSpan={3}>Total</th><th className="right">{money(dt)}</th><th className="right">{money(ct)}</th></tr></tfoot></table></div></section></>}{view==='overview'&&<>{companyId!==''&&<IndiaModule companyId={Number(companyId)} accounts={accounts} onLedgerChanged={()=>loadData(Number(companyId))}/>}{companyId!==''&&<IndiaOps companyId={Number(companyId)} accounts={accounts} onLedgerChanged={()=>loadData(Number(companyId))}/>}</>}<footer>FinoraAI · Approval workflow enabled · AI proposes, people approve</footer></main>
- <div className={`aipopup${aiOpen&&view!=='ai'?' open':''}`} role="dialog" aria-label="AI assistant"><div className="aipopup-head"><Bot size={17}/><strong>AI assistant</strong><button className="small secondary" onClick={()=>{setView('ai');setAiOpen(false)}}><Maximize2 size={13}/>Full page</button><button className="small secondary" aria-label="Close AI assistant" onClick={()=>setAiOpen(false)}><X size={14}/></button></div>{companyId!==''?<AiWorkspace compact companyId={Number(companyId)} onChanged={()=>loadData(Number(companyId))} onOpenFull={()=>{setView('ai');setAiOpen(false)}}/>:<p className="empty">Select or create a company to use the AI assistant.</p>}</div>
- {view!=='ai'&&<button className="aifab" aria-label={aiOpen?'Close AI assistant':'Open AI assistant'} title="AI assistant" onClick={()=>setAiOpen(!aiOpen)}>{aiOpen?<X size={32}/>:<Sparkles size={34}/>}</button>}</div>
+ useEffect(()=>{if(companyId!=='')loadData(Number(companyId)).catch(e=>setError(e.message))},[companyId,loadData]);
+
+ const debits=trial.reduce((s,r)=>s+Number(r.debitTotal||0),0),credits=trial.reduce((s,r)=>s+Number(r.creditTotal||0),0);
+ if(!authenticated) return <SignInView inviteToken={inviteToken}
+  email={email} setEmail={setEmail} password={password} setPassword={setPassword}
+  displayName={displayName} setDisplayName={setDisplayName}
+  busy={busy} error={error} message={message}
+  onSubmit={()=>run(inviteToken?acceptInvitation:signIn)}/>;
+
+ return <div className="shell">
+  <Sidebar view={view} onNavigate={setView} isAdmin={isAdmin} email={email} onSignOut={()=>signOut()}/>
+
+  <main className="main">
+   <TopBar title={PAGES[view].title} subtitle={PAGES[view].subtitle} theme={theme} busy={busy}
+    onToggleTheme={()=>setTheme(theme==='dark'?'light':'dark')}
+    onRefresh={()=>run(async()=>{await loadCompanies();await reload()})}/>
+
+   {error&&<Alert kind="error">{error}</Alert>}
+   {message&&<Alert kind="success">{message}</Alert>}
+
+   {view!=='users'&&<CompanyStrip companies={companies} companyId={companyId}
+    onSelect={setCompanyId} onCreate={createCompany} busy={busy}/>}
+
+   {view==='overview'&&<OverviewView companyId={companyId} accounts={accounts} journals={journals}
+    debits={debits} credits={credits} reload={reload}/>}
+
+   {view==='company'&&<CompanyView companyId={companyId} accounts={accounts} reload={reload} shell={shell}/>}
+
+   {view==='users'&&isAdmin&&<UsersView shell={shell}/>}
+
+   {view==='journals'&&<JournalsView companyId={companyId} accounts={accounts} journals={journals}
+    trial={trial} debits={debits} credits={credits} reload={reload} shell={shell}/>}
+
+   {view==='ai'&&(companyId!==''
+    ? <AiWorkspace companyId={Number(companyId)} onChanged={reload}/>
+    : <p className="empty">Select or create a company to use the AI assistant.</p>)}
+
+   <footer>FinoraAI · Approval workflow enabled · AI proposes, people approve</footer>
+  </main>
+
+  <AiDock open={aiOpen} onOpenChange={setAiOpen} hidden={view==='ai'} companyId={companyId} onChanged={reload}
+   onOpenFullPage={()=>{setView('ai');setAiOpen(false)}}/>
+ </div>;
 }
