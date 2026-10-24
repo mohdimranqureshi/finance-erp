@@ -16,5 +16,27 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
+  # Run with: docker compose --profile app up -d --build
+  app:
+    profiles: ["app"]
+    build: .
+    container_name: finora-ai
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/finance_erp
+      DB_USERNAME: finance_erp
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-}
+      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-}
+    ports:
+      - "127.0.0.1:8080:8080"
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
 volumes:
   finance_erp_pgdata:

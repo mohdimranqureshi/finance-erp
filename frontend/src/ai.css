@@ -1,0 +1,27 @@
+.nav[role=button]{cursor:pointer}.nav[role=button]:hover{background:#1a3f35;color:#fff}
+.aichat{display:flex;flex-direction:column;background:#fff;border:1px solid #e1e8e4;border-radius:14px;overflow:hidden}
+.aichat-head{display:flex;align-items:center;gap:12px;padding:16px 20px;border-bottom:1px solid #e9eeeb}
+.aichat-head .avatar{display:grid;place-items:center;width:36px;height:36px;border-radius:11px;background:#e2f3ec;color:#176b55}
+.aichat-head h2{margin:0;font-size:16px}.aichat-head p{margin:2px 0 0;font-size:12px;color:#63716b}
+.aichat-thread{min-height:320px;max-height:60vh;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:14px;background:#fafcfb}
+.aichat-empty{margin:auto;text-align:center;color:#63716b;max-width:520px}
+.aichat-empty h3{margin:10px 0 4px;color:#17211f}
+.aichat-suggest{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:14px}
+.aichat-suggest button{background:#fff;color:#176b55;border:1px solid #cfe2da;font-weight:500;font-size:13px;white-space:normal;text-align:left}
+.aichat-suggest button:hover:not(:disabled){background:#eef7f3}
+.msg{max-width:78%;padding:11px 14px;border-radius:14px;font-size:14px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere}
+.msg.user{align-self:flex-end;background:#176b55;color:#fff;border-bottom-right-radius:4px}
+.msg.assistant{align-self:flex-start;background:#fff;border:1px solid #e1e8e4;border-bottom-left-radius:4px;white-space:normal}
+.msg.assistant.error{border-color:#f0c4c4;background:#fdf3f3;color:#8a2a2a}
+.msg .meta{margin:8px 0 0;font-size:11px;color:#72807a}
+.msg table{font-size:12px;margin-top:8px}
+.msg.pending{color:#72807a;font-style:italic}
+.aichat-composer{border-top:1px solid #e9eeeb;padding:14px 20px;display:flex;flex-direction:column;gap:10px;background:#fff}
+.aichat-modes{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.aichat-modes button{background:#f1f5f3;color:#3d4d47;font-size:12px;padding:7px 11px;font-weight:600}
+.aichat-modes button.on{background:#176b55;color:#fff}
+.aichat-modes .spacer{margin-left:auto}
+.aichat-input{display:flex;gap:10px;align-items:flex-end}
+.aichat-input textarea{flex:1;resize:none;border:1px solid #dce4e0;border-radius:10px;padding:10px 12px;font:inherit;outline:none;min-height:44px;max-height:160px}
+.aichat-input textarea:focus{border-color:#55a38c;box-shadow:0 0 0 3px #e2f3ec}
+.aichat-foot{font-size:11px;color:#72807a;margin:0}

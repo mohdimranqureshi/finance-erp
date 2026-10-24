@@ -1,12 +1,23 @@
 server:
   port: ${PORT:8080}
   forward-headers-strategy: framework
+  shutdown: graceful
+  compression:
+    enabled: true
+    mime-types: application/json,text/css,application/javascript,text/html
+    min-response-size: 1024
+  tomcat:
+    max-http-form-post-size: 1MB
+    max-swallow-size: 2MB
+  max-http-request-header-size: 16KB
   error:
     include-message: never
     include-binding-errors: never
     include-stacktrace: never
     include-exception: false
 spring:
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
   datasource:
     url: ${DB_URL}
     username: ${DB_USERNAME}
@@ -16,6 +27,8 @@ spring:
       minimum-idle: ${DB_POOL_MIN:2}
       connection-timeout: 30000
       validation-timeout: 5000
+      max-lifetime: 1500000
+      leak-detection-threshold: 60000
   flyway:
     enabled: true
     url: ${FLYWAY_DB_URL:${DB_URL}}
@@ -29,14 +42,17 @@ management:
   endpoint:
     health:
       show-details: never
+      probes:
+        enabled: true
 logging:
   level:
     root: INFO
     org.springframework.security: WARN
 
 app:
-  registration:
-    enabled: ${APP_PUBLIC_REGISTRATION_ENABLED:false}
+  bootstrap-admin:
+    email: ${BOOTSTRAP_ADMIN_EMAIL:}
+    password: ${BOOTSTRAP_ADMIN_PASSWORD:}
   ai:
     enabled: ${AI_ENABLED:false}
     base-url: ${AI_BASE_URL:https://api.openai.com/v1}

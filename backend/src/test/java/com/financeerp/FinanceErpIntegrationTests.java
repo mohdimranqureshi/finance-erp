@@ -32,6 +32,7 @@ class FinanceErpIntegrationTests {
     @LocalServerPort int port;
     @Autowired TestRestTemplate rest;
     @Autowired JdbcTemplate jdbc;
+    @Autowired org.springframework.security.crypto.password.PasswordEncoder encoder;
     @org.springframework.test.context.bean.override.mockito.MockitoBean com.financeerp.ai.LlmClient llm;
 
     @Test void companyAccessPeriodControlAndJournalReversalWorkTogether() {
@@ -87,6 +88,18 @@ class FinanceErpIntegrationTests {
         assertThat(denied.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
     }
 
+
+    @Test void onlyAdministratorsCanCreateAccounts() {
+        String base = "http://localhost:" + port;
+        String url = base + "/api/v1/auth/register";
+        Map<String,Object> body = Map.of("email", "new-user@example.test", "password", "a-strong-new-user-pw", "displayName", "New User");
+        assertThat(rest.postForEntity(url, body, String.class).getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        post(url, Map.of("email", "regular@example.test", "password", "a-strong-regular-pw", "displayName", "Regular"), null, HttpStatus.OK);
+        TestRestTemplate regular = rest.withBasicAuth("regular@example.test", "a-strong-regular-pw");
+        assertThat(regular.postForEntity(url, body, String.class).getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(adminClient().getForObject(base + "/api/v1/auth/me", Map.class).get("admin")).isEqualTo(true);
+        assertThat(regular.getForObject(base + "/api/v1/auth/me", Map.class).get("admin")).isEqualTo(false);
+    }
 
     @Test void invitationTokenIsSingleUseAndCreatesCompanyMembership() {
         String base = "http://localhost:" + port;
@@ -314,8 +327,13 @@ class FinanceErpIntegrationTests {
         post(co + "/journals/" + journalId + "/post", Map.of(), maker, HttpStatus.OK);
     }
 
+    private TestRestTemplate adminClient() {
+        jdbc.update("INSERT INTO app_users(email,password_hash,display_name,is_admin) VALUES ('admin@example.test',?,'Admin',TRUE) ON CONFLICT (email) DO NOTHING", encoder.encode("a-strong-admin-password"));
+        return rest.withBasicAuth("admin@example.test", "a-strong-admin-password");
+    }
+
     private Map<String,Object> post(String url, Object body, TestRestTemplate client, HttpStatus expected) {
-        TestRestTemplate actual = client == null ? rest : client;
+        TestRestTemplate actual = client != null ? client : url.endsWith("/api/v1/auth/register") ? adminClient() : rest;
         ResponseEntity<Map> response = actual.postForEntity(url, body, Map.class);
         assertThat(response.getStatusCode()).isEqualTo(expected);
         return response.getBody() == null ? Map.of() : response.getBody();

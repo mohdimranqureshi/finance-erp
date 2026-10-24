@@ -1,0 +1,9 @@
+.git
+.node
+.env
+.env.*
+**/node_modules
+**/target
+frontend/dist
+docs
+scripts

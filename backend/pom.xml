@@ -25,12 +25,33 @@
  </dependencies>
  <build>
   <finalName>finora-ai</finalName>
+  <pluginManagement>
+   <plugins>
+    <plugin>
+     <groupId>org.eclipse.m2e</groupId><artifactId>lifecycle-mapping</artifactId><version>1.0.0</version>
+     <configuration>
+      <lifecycleMappingMetadata>
+       <pluginExecutions>
+        <pluginExecution>
+         <pluginExecutionFilter><groupId>com.github.eirslett</groupId><artifactId>frontend-maven-plugin</artifactId><versionRange>[1.0,)</versionRange><goals><goal>install-node-and-npm</goal><goal>npm</goal></goals></pluginExecutionFilter>
+         <action><ignore/></action>
+        </pluginExecution>
+        <pluginExecution>
+         <pluginExecutionFilter><groupId>org.apache.maven.plugins</groupId><artifactId>maven-resources-plugin</artifactId><versionRange>[3.0,)</versionRange><goals><goal>copy-resources</goal></goals></pluginExecutionFilter>
+         <action><ignore/></action>
+        </pluginExecution>
+       </pluginExecutions>
+      </lifecycleMappingMetadata>
+     </configuration>
+    </plugin>
+   </plugins>
+  </pluginManagement>
   <plugins>
    <plugin>
     <groupId>com.github.eirslett</groupId><artifactId>frontend-maven-plugin</artifactId><version>1.15.1</version>
     <configuration>
      <workingDirectory>${project.basedir}/../frontend</workingDirectory>
-     <installDirectory>${project.build.directory}/node</installDirectory>
+     <installDirectory>${project.basedir}/../.node</installDirectory>
     </configuration>
     <executions>
      <execution><id>install-node-and-npm</id><goals><goal>install-node-and-npm</goal></goals><phase>generate-resources</phase><configuration><nodeVersion>v22.14.0</nodeVersion><npmVersion>10.9.2</npmVersion></configuration></execution>

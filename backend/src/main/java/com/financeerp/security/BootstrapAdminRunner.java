@@ -16,9 +16,9 @@ import org.springframework.transaction.annotation.Transactional;
 public class BootstrapAdminRunner implements ApplicationRunner {
 	private final JdbcTemplate jdbc;
 	private final PasswordEncoder encoder;
-	@Value("${app.bootstrap-admin.email:}")
+	@Value("${app.bootstrap-admin.email:${BOOTSTRAP_ADMIN_EMAIL:}}")
 	private String email;
-	@Value("${app.bootstrap-admin.password:}")
+	@Value("${app.bootstrap-admin.password:${BOOTSTRAP_ADMIN_PASSWORD:}}")
 	private String password;
 	@Value("${app.bootstrap-admin.display-name:FinoraAI Administrator}")
 	private String displayName;
@@ -46,7 +46,7 @@ public class BootstrapAdminRunner implements ApplicationRunner {
 			// startup.
 			return;
 		}
-		jdbc.update("INSERT INTO app_users(email,password_hash,display_name) VALUES (?,?,?)", normalized,
+		jdbc.update("INSERT INTO app_users(email,password_hash,display_name,is_admin) VALUES (?,?,?,TRUE)", normalized,
 				encoder.encode(password),
 				displayName == null || displayName.isBlank() ? "FinoraAI Administrator" : displayName.trim());
 		// Bootstrap only creates the identity. The first company owner must be assigned
