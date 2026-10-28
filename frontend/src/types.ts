@@ -6,7 +6,7 @@ export type Journal = {
 };
 export type TrialRow = {
   accountId: number; code: string; name: string; accountType: string;
-  debitTotal: number; creditTotal: number;
+  debitTotal: number; creditTotal: number; lastEntryDate?: string | null;
 };
 export type View = 'overview' | 'company' | 'users' | 'journals' | 'reports' | 'ai';
 

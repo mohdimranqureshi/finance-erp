@@ -31,10 +31,11 @@ public class ReportController {
 				SELECT a.id AS "accountId", a.code, a.name, a.account_type AS "accountType",
 				       COALESCE(SUM(l.debit),0) AS "debitTotal",
 				       COALESCE(SUM(l.credit),0) AS "creditTotal",
-				       COALESCE(SUM(l.debit-l.credit),0) AS "netDebit"
+				       COALESCE(SUM(l.debit-l.credit),0) AS "netDebit",
+				       MAX(l.journal_date) AS "lastEntryDate"
 				FROM accounts a
 				LEFT JOIN (
-				    SELECT jl.company_id, jl.account_id, jl.debit, jl.credit
+				    SELECT jl.company_id, jl.account_id, jl.debit, jl.credit, je.journal_date
 				    FROM journal_lines jl
 				    JOIN journal_entries je ON je.company_id=jl.company_id AND je.id=jl.journal_entry_id
 				    WHERE je.status='POSTED' AND je.journal_date BETWEEN ? AND ?

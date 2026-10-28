@@ -61,7 +61,7 @@ public class AdjustmentNoteController {
 		LocalDate invoiceDate = ((java.sql.Date) inv.get("date")).toLocalDate();
 		requireNoteDate(req.noteDate(), invoiceDate);
 		Totals t = compute(companyId, req, invoiceDate, "INTER_STATE".equals(inv.get("supply")),
-				company.gstRegistered(), "INCOME", "SALES");
+				company.gstRegistered(), "INCOME", "SALES_RETURNS");
 		requireWithinSource(companyId, "sales_invoice_id", invoiceId, (BigDecimal) inv.get("total"), t.total());
 		poster.requireOpenPeriod(companyId, req.noteDate());
 		String number = String.format("CN/%s/%05d", IndiaTax.fiscalYear(req.noteDate()).substring(2),

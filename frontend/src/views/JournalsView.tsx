@@ -130,19 +130,21 @@ export default function JournalsView({ companyId, accounts, journals, trial, deb
             { header: 'Code', value: r => r.code },
             { header: 'Account', value: r => r.name },
             { header: 'Type', value: r => r.accountType },
+            { header: 'Last entry', value: r => r.lastEntryDate || '' },
             { header: 'Debits', value: r => r.debitTotal },
             { header: 'Credits', value: r => r.creditTotal },
           ]} />
       </span>}>
-      <Table columns={5} isEmpty={!trial.length} empty="Post a journal to see the trial balance."
-        head={<tr><th>Code</th><th>Account</th><th>Type</th><th className="right">Debits</th><th className="right">Credits</th></tr>}
+      <Table columns={6} isEmpty={!trial.length} empty="Post a journal to see the trial balance."
+        head={<tr><th>Code</th><th>Account</th><th>Type</th><th>Last entry</th><th className="right">Debits</th><th className="right">Credits</th></tr>}
         foot={<tfoot><tr>
-          <th colSpan={3}>Total</th>
+          <th colSpan={4}>Total</th>
           <th className="right">{money(debits)}</th>
           <th className="right">{money(credits)}</th>
         </tr></tfoot>}>
         {trial.map(r => <tr key={r.accountId}>
           <td className="mono">{r.code}</td><td>{r.name}</td><td>{r.accountType}</td>
+          <td>{r.lastEntryDate || <span className="muted">—</span>}</td>
           <td className="right">{money(Number(r.debitTotal))}</td>
           <td className="right">{money(Number(r.creditTotal))}</td>
         </tr>)}

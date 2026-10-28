@@ -54,7 +54,8 @@ public class RevenueScheduleController {
 		BigDecimal taxable = (BigDecimal) inv.get("taxable");
 		BigDecimal amount = req.amount() == null ? taxable : req.amount();
 		gst.checkAmount(amount, 13, "Amount");
-		if (amount.signum() <= 0 || amount.scale() > 2)
+		// NUMERIC(19,4) columns come back with scale 4, so compare significant digits rather than raw scale.
+		if (amount.signum() <= 0 || amount.stripTrailingZeros().scale() > 2)
 			throw new IllegalArgumentException("Amount must be positive with at most two decimal places.");
 		amount = amount.setScale(2, RoundingMode.UNNECESSARY);
 		BigDecimal scheduled = jdbc.queryForObject(

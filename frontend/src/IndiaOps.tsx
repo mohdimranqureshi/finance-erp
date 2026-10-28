@@ -133,7 +133,7 @@ export default function IndiaOps({ companyId, accounts, onLedgerChanged }: { com
     <section className="panel below">
       <div className="panelhead"><div><h2>GST filing data, e-invoice and e-way bill</h2><p>Payloads are generated for review; nothing is sent to the government portals</p></div></div>
       <form className="accountform" onSubmit={e => e.preventDefault()}>
-        <button type="button" disabled={busy} onClick={gstr1}>GSTR-1 working data (FY to date)</button>
+        <button type="button" className="wide" disabled={busy} onClick={gstr1}>GSTR-1 working data (FY to date)</button>
         <label>Invoice<select value={docInvoice} onChange={e => setDocInvoice(e.target.value)}><option value="">Select</option>{issued.map(i => <option key={i.id} value={i.id}>{i.invoiceNumber} — {i.customerName}{i.irn ? ' (IRN recorded)' : ''}</option>)}</select></label>
         <button type="button" className="secondary" disabled={busy || !docInvoice} onClick={eInvoice}>E-invoice payload</button>
         <label>IRN from the portal<input value={irn} onChange={e => setIrn(e.target.value)} maxLength={64} /></label>

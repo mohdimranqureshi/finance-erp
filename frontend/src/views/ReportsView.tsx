@@ -7,7 +7,7 @@ import type { Account, Shell } from '../types';
 
 type Row = { accountId: number; code: string; name: string; amount: number };
 type Pnl = { from: string; to: string; income: Row[]; expenses: Row[]; totalIncome: number; totalExpenses: number; netProfit: number };
-type TrialRow = { accountId: number; code: string; name: string; accountType: string; debitTotal: number; creditTotal: number };
+type TrialRow = { accountId: number; code: string; name: string; accountType: string; debitTotal: number; creditTotal: number; lastEntryDate?: string | null };
 type LedgerLine = { journalId: number; date: string; description: string; lineDescription?: string | null; debit: number; credit: number; balance: number };
 type Ledger = {
   code: string; name: string; accountType: string; normalBalance: 'DEBIT' | 'CREDIT';
@@ -138,17 +138,19 @@ export default function ReportsView({ companyId, accounts, shell }: {
             { header: 'Code', value: r => r.code },
             { header: 'Account', value: r => r.name },
             { header: 'Type', value: r => r.accountType },
+            { header: 'Last entry', value: r => r.lastEntryDate || '' },
             { header: 'Debits', value: r => r.debitTotal },
             { header: 'Credits', value: r => r.creditTotal },
           ]} />
       </span>}>
       <div className="print-only"><strong>Trial balance</strong> · {from} to {to} · posted journals only</div>
-      <Table columns={5} isEmpty={!trial.length} empty="Nothing posted in this period."
-        head={<tr><th>Code</th><th>Account</th><th>Type</th><th className="right">Debits</th><th className="right">Credits</th></tr>}
-        foot={<tfoot><tr><th colSpan={3}>Total</th>
+      <Table columns={6} isEmpty={!trial.length} empty="Nothing posted in this period."
+        head={<tr><th>Code</th><th>Account</th><th>Type</th><th>Last entry</th><th className="right">Debits</th><th className="right">Credits</th></tr>}
+        foot={<tfoot><tr><th colSpan={4}>Total</th>
           <th className="right">{money(debitTotal)}</th><th className="right">{money(creditTotal)}</th></tr></tfoot>}>
         {trial.map(r => <tr key={r.accountId}>
           <td className="mono">{r.code}</td><td>{r.name}</td><td>{r.accountType}</td>
+          <td>{r.lastEntryDate || <span className="muted">—</span>}</td>
           <td className="right">{money(Number(r.debitTotal))}</td>
           <td className="right">{money(Number(r.creditTotal))}</td>
         </tr>)}
