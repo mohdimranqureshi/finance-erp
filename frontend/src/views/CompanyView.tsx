@@ -1,7 +1,8 @@
-import { useState } from 'react';
-import { Plus } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Plus, ShieldAlert } from 'lucide-react';
 import { api } from '../api';
 import { Panel, Table } from '../ui';
+import { ExportBar } from '../exporters';
 import type { Account, Shell } from '../types';
 
 const ACCOUNT_TYPES = ['ASSET', 'LIABILITY', 'EQUITY', 'INCOME', 'EXPENSE'];
@@ -15,6 +16,24 @@ export default function CompanyView({ companyId, accounts, reload, shell }: {
   const [memberEmail, setMemberEmail] = useState('');
   const [memberRole, setMemberRole] = useState('APPROVER');
   const [invitationToken, setInvitationToken] = useState('');
+  const [allowSelfApproval, setAllowSelfApproval] = useState(false);
+
+  useEffect(() => {
+    if (companyId === '') return;
+    api<{ allowSelfApproval: boolean }>(`/api/v1/companies/${companyId}/settings`)
+      .then(s => setAllowSelfApproval(s.allowSelfApproval))
+      .catch(() => undefined);
+  }, [companyId]);
+
+  const setSelfApproval = (allow: boolean) => shell.run(async () => {
+    const saved = await api<{ allowSelfApproval: boolean }>(`/api/v1/companies/${companyId}/settings`, {
+      method: 'PUT', body: JSON.stringify({ allowSelfApproval: allow }),
+    });
+    setAllowSelfApproval(saved.allowSelfApproval);
+    shell.notify(allow
+      ? 'Self-approval is on. The same person can now approve their own invoices and journals, and each one is recorded in the audit log as a self-approval.'
+      : 'Self-approval is off. Journals must be approved by someone other than the creator or submitter.');
+  });
 
   const createAccount = async () => {
     const ok = await shell.run(async () => {
@@ -52,6 +71,25 @@ export default function CompanyView({ companyId, accounts, reload, shell }: {
 
   return <>
     <Panel
+      title="Approval control"
+      description="By default an invoice or journal must be approved by someone other than the person who raised it. If you are the only person who keeps the books, you can allow yourself to approve your own documents."
+      aside={<span className={allowSelfApproval ? 'draft' : 'posted'}>
+        {allowSelfApproval ? 'Self-approval on' : 'Separation of duties'}
+      </span>}>
+      <label style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+        <input type="checkbox" checked={allowSelfApproval} disabled={shell.busy || !companyId}
+          onChange={e => setSelfApproval(e.target.checked)} />
+        <span>Let the same user approve the invoices and journals they created</span>
+      </label>
+      {allowSelfApproval && <p className="hint">
+        <ShieldAlert size={14} /> Nobody independently checks these entries. Each self-approval is still stored in the
+        audit log as <code>JOURNAL_SELF_APPROVED</code>. An auditor may treat this as a missing internal control, so turn
+        it back off once a second person can approve.
+      </p>}
+      <p className="hint">Only an owner can change this setting, and every change is recorded in the audit log.</p>
+    </Panel>
+
+    <Panel
       title="Company team"
       description="Add a separately registered user so journals can be approved by someone other than the person who raised them."
       aside={<span className="count">Maker-checker</span>}>
@@ -85,9 +123,18 @@ export default function CompanyView({ companyId, accounts, reload, shell }: {
 
     <div className="grid">
       <Panel
+        id="chart-of-accounts"
         title="Chart of accounts"
         description="Configure company-specific accounts"
-        aside={<span className="count">{accounts.length} accounts</span>}>
+        aside={<span className="inline">
+          <span className="count">{accounts.length} accounts</span>
+          <ExportBar printId="chart-of-accounts" filename="chart-of-accounts" rows={accounts}
+            columns={[
+              { header: 'Code', value: a => a.code },
+              { header: 'Account', value: a => a.name },
+              { header: 'Type', value: a => a.accountType },
+            ]} />
+        </span>}>
         <form className="accountform" onSubmit={e => { e.preventDefault(); createAccount(); }}>
           <label>Code<input value={code} onChange={e => setCode(e.target.value)} placeholder="1000" required /></label>
           <label>Account name<input value={name} onChange={e => setName(e.target.value)} placeholder="Bank" required /></label>

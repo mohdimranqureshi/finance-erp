@@ -1,6 +1,6 @@
 import {useCallback,useEffect,useState} from 'react';
 import {api,setBasicAuth,setUnauthorizedHandler} from './api';
-import {Alert} from './ui';
+import {useToastFeed} from './toast';
 import Sidebar from './components/Sidebar';
 import TopBar from './components/TopBar';
 import CompanyStrip from './components/CompanyStrip';
@@ -10,10 +10,11 @@ import OverviewView from './views/OverviewView';
 import CompanyView from './views/CompanyView';
 import UsersView from './views/UsersView';
 import JournalsView from './views/JournalsView';
+import ReportsView from './views/ReportsView';
 import AiWorkspace from './AiWorkspace';
 import type {Account,Company,Journal,Shell,TrialRow,View} from './types';
 const IDLE_MS=15*60*1000;
-const PAGES:Record<View,{title:string;subtitle:string}>={overview:{title:'Overview',subtitle:'Accounting you can inspect, verify, and trust.'},company:{title:'Company & accounts',subtitle:'Manage your team and chart of accounts.'},users:{title:'Users',subtitle:'Application accounts and administrator access.'},journals:{title:'Journals & ledger',subtitle:'Create, approve and post journals, and check the trial balance.'},ai:{title:'AI assistant',subtitle:'Ask questions, draft entries and review the close. AI proposes, people approve.'}};
+const PAGES:Record<View,{title:string;subtitle:string}>={overview:{title:'Overview',subtitle:'Accounting you can inspect, verify, and trust.'},company:{title:'Company & accounts',subtitle:'Manage your team and chart of accounts.'},users:{title:'Users',subtitle:'Application accounts and administrator access.'},journals:{title:'Journals & ledger',subtitle:'Create, approve and post journals, and check the trial balance.'},reports:{title:'Reports',subtitle:'Run the ledger, profit and loss, and trial balance for any period you choose.'},ai:{title:'AI assistant',subtitle:'Ask questions, draft entries and review the close. AI proposes, people approve.'}};
 export default function App(){
  const [email,setEmail]=useState('');
  const [password,setPassword]=useState('');
@@ -92,6 +93,7 @@ export default function App(){
  useEffect(()=>{if(companyId!=='')loadData(Number(companyId)).catch(e=>setError(e.message))},[companyId,loadData]);
 
  const debits=trial.reduce((s,r)=>s+Number(r.debitTotal||0),0),credits=trial.reduce((s,r)=>s+Number(r.creditTotal||0),0);
+ useToastFeed(error,message);
  if(!authenticated) return <SignInView inviteToken={inviteToken}
   email={email} setEmail={setEmail} password={password} setPassword={setPassword}
   displayName={displayName} setDisplayName={setDisplayName}
@@ -106,9 +108,6 @@ export default function App(){
     onToggleTheme={()=>setTheme(theme==='dark'?'light':'dark')}
     onRefresh={()=>run(async()=>{await loadCompanies();await reload()})}/>
 
-   {error&&<Alert kind="error">{error}</Alert>}
-   {message&&<Alert kind="success">{message}</Alert>}
-
    {view!=='users'&&<CompanyStrip companies={companies} companyId={companyId}
     onSelect={setCompanyId} onCreate={createCompany} busy={busy}/>}
 
@@ -117,10 +116,12 @@ export default function App(){
 
    {view==='company'&&<CompanyView companyId={companyId} accounts={accounts} reload={reload} shell={shell}/>}
 
-   {view==='users'&&isAdmin&&<UsersView shell={shell}/>}
+   {view==='users'&&isAdmin&&<UsersView shell={shell} currentEmail={email}/>}
 
    {view==='journals'&&<JournalsView companyId={companyId} accounts={accounts} journals={journals}
     trial={trial} debits={debits} credits={credits} reload={reload} shell={shell}/>}
+
+   {view==='reports'&&<ReportsView companyId={companyId} accounts={accounts} shell={shell}/>}
 
    {view==='ai'&&(companyId!==''
     ? <AiWorkspace companyId={Number(companyId)} onChanged={reload}/>

@@ -72,6 +72,67 @@ public class ReportController {
 		return rows.stream().map(r -> (BigDecimal) r.get("amount")).reduce(BigDecimal.ZERO, BigDecimal::add);
 	}
 
+	private static final java.util.Set<String> CREDIT_NORMAL = java.util.Set.of("LIABILITY", "EQUITY", "INCOME");
+
+	/** Account ledger for a period: opening balance, each posted line, and a running balance. */
+	@GetMapping("/ledger")
+	public Map<String, Object> ledger(@PathVariable long companyId, @RequestParam long accountId,
+			@RequestParam LocalDate from, @RequestParam LocalDate to) {
+		access.requireMembership(companyId);
+		if (from.isAfter(to))
+			throw new IllegalArgumentException("'from' must be on or before 'to'.");
+		Map<String, Object> account;
+		try {
+			account = jdbc.queryForMap(
+					"SELECT id,code,name,account_type AS \"accountType\" FROM accounts WHERE company_id=? AND id=?",
+					companyId, accountId);
+		} catch (org.springframework.dao.EmptyResultDataAccessException ex) {
+			throw new IllegalArgumentException("Account not found in this company.");
+		}
+		BigDecimal opening = jdbc.queryForObject("""
+				SELECT COALESCE(SUM(l.debit-l.credit),0) FROM journal_lines l
+				JOIN journal_entries je ON je.company_id=l.company_id AND je.id=l.journal_entry_id
+				WHERE l.company_id=? AND l.account_id=? AND je.status='POSTED' AND je.journal_date < ?
+				""", BigDecimal.class, companyId, accountId, from);
+		List<Map<String, Object>> rows = jdbc.queryForList("""
+				SELECT je.id AS "journalId", je.journal_date AS "date", je.description,
+				       l.description AS "lineDescription", l.debit, l.credit
+				FROM journal_lines l
+				JOIN journal_entries je ON je.company_id=l.company_id AND je.id=l.journal_entry_id
+				WHERE l.company_id=? AND l.account_id=? AND je.status='POSTED' AND je.journal_date BETWEEN ? AND ?
+				ORDER BY je.journal_date, je.id, l.id
+				""", companyId, accountId, from, to);
+
+		boolean creditNormal = CREDIT_NORMAL.contains(String.valueOf(account.get("accountType")));
+		BigDecimal running = opening == null ? BigDecimal.ZERO : opening;
+		BigDecimal debits = BigDecimal.ZERO, credits = BigDecimal.ZERO;
+		List<Map<String, Object>> lines = new ArrayList<>();
+		for (Map<String, Object> r : rows) {
+			BigDecimal debit = (BigDecimal) r.get("debit"), credit = (BigDecimal) r.get("credit");
+			debits = debits.add(debit);
+			credits = credits.add(credit);
+			running = running.add(debit).subtract(credit);
+			Map<String, Object> line = new LinkedHashMap<>(r);
+			line.put("balance", creditNormal ? running.negate() : running);
+			lines.add(line);
+		}
+		BigDecimal openingNatural = opening == null ? BigDecimal.ZERO : opening;
+		Map<String, Object> out = new LinkedHashMap<>();
+		out.put("accountId", account.get("id"));
+		out.put("code", account.get("code"));
+		out.put("name", account.get("name"));
+		out.put("accountType", account.get("accountType"));
+		out.put("normalBalance", creditNormal ? "CREDIT" : "DEBIT");
+		out.put("from", from);
+		out.put("to", to);
+		out.put("openingBalance", creditNormal ? openingNatural.negate() : openingNatural);
+		out.put("lines", lines);
+		out.put("totalDebits", debits);
+		out.put("totalCredits", credits);
+		out.put("closingBalance", creditNormal ? running.negate() : running);
+		return out;
+	}
+
 	@GetMapping("/profit-and-loss")
 	public Map<String, Object> profitAndLoss(@PathVariable long companyId, @RequestParam LocalDate from,
 			@RequestParam LocalDate to) {

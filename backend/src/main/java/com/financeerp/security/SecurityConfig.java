@@ -32,8 +32,8 @@ public class SecurityConfig {
 						+ "object-src 'none'; " + "base-uri 'self'; " + "frame-ancestors 'none'")))
 				.sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 				.authorizeHttpRequests(auth -> auth.requestMatchers("/", "/index.html", "/assets/**", "/favicon.ico",
-						"/*.js", "/*.css", "/api/v1/auth/accept-invitation",
-						"/actuator/health", "/actuator/health/**", "/actuator/info", "/error").permitAll().requestMatchers("/api/v1/auth/register").hasRole("ADMIN").anyRequest().authenticated())
+						"/favicon.svg", "/*.js", "/*.css", "/api/v1/auth/accept-invitation",
+						"/actuator/health", "/actuator/health/**", "/actuator/info", "/error").permitAll().requestMatchers("/api/v1/auth/register", "/api/v1/admin/**").hasRole("ADMIN").anyRequest().authenticated())
 				.exceptionHandling(ex -> ex.authenticationEntryPoint(JSON_401))
 				.httpBasic(basic -> basic.authenticationEntryPoint(JSON_401)).formLogin(form -> form.disable()).build();
 	}

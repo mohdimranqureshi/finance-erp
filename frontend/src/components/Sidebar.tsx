@@ -1,4 +1,4 @@
-import { BookOpen, Bot, Building2, FileText, LayoutDashboard, LogOut, ShieldCheck, Users } from 'lucide-react';
+import { BarChart3, BookOpen, Bot, Building2, FileText, LayoutDashboard, LogOut, ShieldCheck, Users } from 'lucide-react';
 import type { View } from '../types';
 
 const LINKS: { id: View; label: string; icon: typeof BookOpen; adminOnly?: boolean }[] = [
@@ -6,6 +6,7 @@ const LINKS: { id: View; label: string; icon: typeof BookOpen; adminOnly?: boole
   { id: 'company', label: 'Company & accounts', icon: Building2 },
   { id: 'users', label: 'Users', icon: Users, adminOnly: true },
   { id: 'journals', label: 'Journals & ledger', icon: FileText },
+  { id: 'reports', label: 'Reports', icon: BarChart3 },
   { id: 'ai', label: 'AI assistant', icon: Bot },
 ];
 
@@ -26,7 +27,7 @@ export default function Sidebar({ view, onNavigate, isAdmin, email, onSignOut }:
     <div className="sidebottom">
       <ShieldCheck size={15} />
       <span>{email}<br /><small>{isAdmin ? 'Administrator' : 'Signed in'}</small></span>
-      <button className="nav signout" onClick={onSignOut}><LogOut size={15} />Sign out</button>
+      <button className="nav signout" onClick={onSignOut}><LogOut size={17} />Sign out</button>
     </div>
   </aside>;
 }

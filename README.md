@@ -5,7 +5,7 @@ India-first finance-only ERP foundation using Java 17, Spring Boot, PostgreSQL, 
 ## Added in this milestone
 
 - Maker-checker journal workflow: `DRAFT → SUBMITTED → APPROVED → POSTED`.
-- The submitter cannot approve their own journal; the API checks this using authenticated user IDs.
+- The submitter cannot approve their own journal; the API checks this using authenticated user IDs. An owner can override this per company at `PUT /api/v1/companies/{id}/settings` (`allowSelfApproval`), which is off by default; self-approvals are then recorded as `JOURNAL_SELF_APPROVED`.
 - Approval and posting are recorded with actor IDs and timestamps, plus audit events.
 - Posting requires approval and an open accounting period; balance and minimum-line checks are repeated server-side.
 - Production profile requires explicit database environment variables (no embedded production DB credentials).
@@ -58,7 +58,7 @@ Do not literally use the placeholder host/password. Do not expose PostgreSQL pub
 
 - `POST /api/v1/companies/{companyId}/journals` creates a draft.
 - `POST /api/v1/companies/{companyId}/journals/{journalId}/submit` submits (owner/accountant).
-- `POST /api/v1/companies/{companyId}/journals/{journalId}/approve` approves (owner/approver, not the submitter).
+- `POST /api/v1/companies/{companyId}/journals/{journalId}/approve` approves (owner/approver, not the submitter unless the company has enabled self-approval).
 - `POST /api/v1/companies/{companyId}/journals/{journalId}/post` posts only an approved journal.
 - `POST /api/v1/companies/{companyId}/journals/{journalId}/reverse` creates a linked equal-and-opposite posted reversal (owner/approver).
 

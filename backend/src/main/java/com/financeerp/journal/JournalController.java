@@ -118,9 +118,10 @@ public class JournalController {
 			throw new IllegalArgumentException("Only submitted journals can be approved.");
 		Long submitter = (Long) journal.get("submittedByUserId");
 		Long creator = (Long) journal.get("createdByUserId");
-		if ((submitter != null && submitter == actorId) || (creator != null && creator == actorId))
+		boolean selfApproval = (submitter != null && submitter == actorId) || (creator != null && creator == actorId);
+		if (selfApproval && !selfApprovalAllowed(companyId))
 			throw new org.springframework.security.access.AccessDeniedException(
-					"Maker-checker control: the journal creator and submitter cannot approve their own journal.");
+					"Maker-checker control: the journal creator and submitter cannot approve their own journal. An owner can allow this in company settings if one person runs the books.");
 		LocalDate date = ((java.sql.Date) journal.get("journalDate")).toLocalDate();
 		requireOpenPeriod(companyId, date);
 		Map<String, Object> totals = totals(companyId, journalId);
@@ -130,7 +131,7 @@ public class JournalController {
 		jdbc.update(
 				"UPDATE journal_entries SET status='APPROVED',approved_by_user_id=?,approved_at=now() WHERE company_id=? AND id=?",
 				actorId, companyId, journalId);
-		audit(companyId, "JOURNAL_APPROVED", journalId, "APPROVED");
+		audit(companyId, selfApproval ? "JOURNAL_SELF_APPROVED" : "JOURNAL_APPROVED", journalId, "APPROVED");
 		return getJournal(companyId, journalId);
 	}
 
@@ -234,6 +235,11 @@ public class JournalController {
 		if (openPeriods.isEmpty())
 			throw new IllegalArgumentException("No open accounting period contains " + date
 					+ ". Create or reopen the appropriate period before posting.");
+	}
+
+	private boolean selfApprovalAllowed(long companyId) {
+		return Boolean.TRUE.equals(
+				jdbc.queryForObject("SELECT allow_self_approval FROM companies WHERE id=?", Boolean.class, companyId));
 	}
 
 	private void audit(long companyId, String action, long id, String status) {

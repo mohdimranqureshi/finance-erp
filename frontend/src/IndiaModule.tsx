@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { FileText, Landmark, Plus, Receipt, Sparkles, Users } from 'lucide-react';
 import { api, money } from './api';
+import { useToastFeed } from './toast';
 
 type Account = { id: number; code: string; name: string; accountType: string };
 type State = { code: string; name: string };
@@ -110,11 +111,9 @@ export default function IndiaModule({ companyId, accounts, onLedgerChanged }: { 
         : <span className="muted">Journal #{d.journalEntryId} {d.journalStatus}</span>}</td>
     </tr>);
 
+  useToastFeed(error, message);
   return <>
-    <div className="eyebrow" style={{ marginTop: 24 }}>INDIA · GST · TDS</div>
-    {error && <div className="alert error">{error}</div>}{message && <div className="alert success">{message}</div>}
-
-    <section className="panel below">
+    <div className="eyebrow" style={{ marginTop: 24 }}>INDIA · GST · TDS</div>    <section className="panel below">
       <div className="panelhead"><div><h2>India GST profile</h2><p>GSTIN is validated with its checksum; the state drives CGST/SGST vs IGST</p></div><span className="count">GST</span></div>
       <form className="accountform" onSubmit={e => { e.preventDefault(); saveProfile(); }}>
         <label>GSTIN (blank if unregistered)<input value={gstin} onChange={e => setGstin(e.target.value.toUpperCase())} maxLength={15} placeholder="27AAPFU0939F1ZV" /></label>

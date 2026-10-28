@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, money } from './api';
+import { useToastFeed } from './toast';
 
 type Account = { id: number; code: string; name: string; accountType: string };
 type Item = { id: number; number: string; party: string; date: string; dueDate?: string | null; totalAmount: number; outstanding: number; daysOverdue: number; bucket: string };
@@ -87,10 +88,9 @@ export default function IndiaOps({ companyId, accounts, onLedgerChanged }: { com
       <td><button className="small" disabled={busy} onClick={() => { setSel({ kind, item: r }); setAmount(String(r.outstanding)); }}>{kind === 'receipt' ? 'Record receipt' : 'Record payment'}</button></td></tr>)}
     {!rows.length && <tr><td colSpan={6} className="empty">Nothing outstanding.</td></tr>}</tbody></table></div>;
 
+  useToastFeed(error, message);
   return <>
     <div className="eyebrow" style={{ marginTop: 24 }}>INDIA · SETTLEMENT · RECONCILIATION · COMPLIANCE DATA</div>
-    {error && <div className="alert error">{error}</div>}{message && <div className="alert success">{message}</div>}
-
     <section className="panel below">
       <div className="panelhead"><div><h2>Receivables and payables</h2><p>Receipts support TDS deducted by the customer; payments post as drafts for approval</p></div><span className="count">{open ? `${money(open.totalReceivable)} due / ${money(open.totalPayable)} payable` : ''}</span></div>
       {sel && <form className="accountform" onSubmit={e => { e.preventDefault(); settle(); }}>

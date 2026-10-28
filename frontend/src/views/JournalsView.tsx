@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Plus } from 'lucide-react';
 import { api, money } from '../api';
 import { Panel, Table } from '../ui';
+import { ExportBar } from '../exporters';
 import type { Account, Journal, Shell, TrialRow } from '../types';
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
@@ -94,8 +95,17 @@ export default function JournalsView({ companyId, accounts, journals, trial, deb
       </Panel>
     </div>
 
-    <Panel title="Recent journals" description="Draft → submitted → independently approved → posted"
-      aside={<span className="count">{journals.length} total</span>}>
+    <Panel id="journals-list" title="Recent journals" description="Draft → submitted → independently approved → posted"
+      aside={<span className="inline">
+        <span className="count">{journals.length} total</span>
+        <ExportBar printId="journals-list" filename="journals" rows={journals}
+          columns={[
+            { header: 'Journal', value: j => `JE-${String(j.id).padStart(5, '0')}` },
+            { header: 'Date', value: j => j.journalDate },
+            { header: 'Description', value: j => j.description },
+            { header: 'Status', value: j => j.status },
+          ]} />
+      </span>}>
       <Table columns={5} isEmpty={!journals.length} empty="No journals yet. Create one above."
         head={<tr><th>Journal</th><th>Date</th><th>Description</th><th>Status</th><th>Action</th></tr>}>
         {journals.map(j => <tr key={j.id}>
@@ -112,8 +122,18 @@ export default function JournalsView({ companyId, accounts, journals, trial, deb
       </Table>
     </Panel>
 
-    <Panel title="Trial balance" description="Posted transactions only · current calendar year to date"
-      aside={<span className="count">INR</span>}>
+    <Panel id="journals-trial" title="Trial balance" description="Posted transactions only · current calendar year to date"
+      aside={<span className="inline">
+        <span className="count">INR</span>
+        <ExportBar printId="journals-trial" filename="trial-balance" rows={trial}
+          columns={[
+            { header: 'Code', value: r => r.code },
+            { header: 'Account', value: r => r.name },
+            { header: 'Type', value: r => r.accountType },
+            { header: 'Debits', value: r => r.debitTotal },
+            { header: 'Credits', value: r => r.creditTotal },
+          ]} />
+      </span>}>
       <Table columns={5} isEmpty={!trial.length} empty="Post a journal to see the trial balance."
         head={<tr><th>Code</th><th>Account</th><th>Type</th><th className="right">Debits</th><th className="right">Credits</th></tr>}
         foot={<tfoot><tr>

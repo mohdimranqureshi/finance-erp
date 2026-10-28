@@ -3,12 +3,14 @@ package com.financeerp.company;
 import com.financeerp.security.CompanyAccess;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 @RestController
 @RequestMapping("/api/v1/companies")
@@ -22,6 +24,9 @@ public class CompanyController {
 	}
 
 	public record CreateCompanyRequest(@NotBlank String name, String legalName, String baseCurrency) {
+	}
+
+	public record SettingsRequest(@NotNull Boolean allowSelfApproval) {
 	}
 
 	@PostMapping
@@ -54,5 +59,28 @@ public class CompanyController {
 		return jdbc.queryForList(
 				"SELECT c.id,c.name,c.legal_name AS \"legalName\",c.base_currency AS \"baseCurrency\",c.status,c.created_at AS \"createdAt\" FROM companies c JOIN company_memberships m ON m.company_id=c.id JOIN app_users u ON u.id=m.user_id WHERE lower(u.email)=lower(?) AND u.active=true ORDER BY c.id DESC",
 				email);
+	}
+
+	@GetMapping("/{companyId}/settings")
+	public Map<String, Object> settings(@PathVariable long companyId) {
+		access.requireMembership(companyId);
+		return jdbc.queryForMap("SELECT allow_self_approval AS \"allowSelfApproval\" FROM companies WHERE id=?",
+				companyId);
+	}
+
+	/** Turning self-approval on removes separation of duties, so only an owner may change it. */
+	@PutMapping("/{companyId}/settings")
+	@Transactional
+	public Map<String, Object> updateSettings(@PathVariable long companyId, @Valid @RequestBody SettingsRequest req) {
+		access.requireRole(companyId, Set.of("OWNER"));
+		jdbc.update("UPDATE companies SET allow_self_approval=? WHERE id=?", req.allowSelfApproval(), companyId);
+		jdbc.update(
+				"INSERT INTO audit_events(company_id,actor,action,entity_type,entity_id,details) VALUES (?,?,?,'COMPANY',?,jsonb_build_object('allowSelfApproval',?))",
+				companyId,
+				org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication()
+						.getName(),
+				Boolean.TRUE.equals(req.allowSelfApproval()) ? "SELF_APPROVAL_ENABLED" : "SELF_APPROVAL_DISABLED",
+				String.valueOf(companyId), req.allowSelfApproval());
+		return settings(companyId);
 	}
 }

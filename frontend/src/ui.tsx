@@ -1,9 +1,9 @@
 import type { ReactNode } from 'react';
 
-export function Panel({ title, description, aside, children }: {
-  title: ReactNode; description?: ReactNode; aside?: ReactNode; children: ReactNode;
+export function Panel({ id, title, description, aside, children }: {
+  id?: string; title: ReactNode; description?: ReactNode; aside?: ReactNode; children: ReactNode;
 }) {
-  return <section className="panel below">
+  return <section className="panel below" id={id}>
     <div className="panelhead">
       <div><h2>{title}</h2>{description && <p>{description}</p>}</div>
       {aside}

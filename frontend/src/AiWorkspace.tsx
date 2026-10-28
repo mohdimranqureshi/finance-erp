@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Bot, Check, ClipboardCheck, Send, X } from 'lucide-react';
 import { api, money } from './api';
+import { useToastFeed } from './toast';
 
 type Issue = { code: string; message: string };
 type Proposal = { id: number; kind: 'BILL_EXTRACTION' | 'JOURNAL_DRAFT'; status: string; payload: any; warnings: Issue[]; blockers: Issue[]; confidence?: number | null; model: string; resultType?: string | null; resultId?: number | null };
@@ -104,8 +105,8 @@ export default function AiWorkspace({ companyId, onChanged, compact = false, onO
     </div>;
   };
 
+  useToastFeed(error, message);
   return <>
-    {error && <div className="alert error">{error}</div>}{message && <div className="alert success">{message}</div>}
     {status && !status.enabled && <div className="alert"><Bot size={15} /> AI provider not configured. {status.message}</div>}
 
     <section className="aichat">
