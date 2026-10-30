@@ -1,0 +1,31 @@
+TAX INVOICE
+
+Vendor:            Lakshya Tech Services Pvt Ltd
+Vendor GSTIN:      27AABCL1234F1ZY
+Address:           Plot 14, Andheri East, Mumbai, Maharashtra 400069
+
+Bill to:           (your company)
+Invoice No:        LTS/26-27/0142
+Invoice Date:      2026-10-28
+Due Date:          2026-11-27
+Place of Supply:   Maharashtra (27)
+
+----------------------------------------------------------------------------------------
+No  Description                             SAC     Qty   Rate (INR)   Taxable (INR)  GST %
+----------------------------------------------------------------------------------------
+1   Monthly IT support retainer - October   998313    1     40,000.00      40,000.00    18
+2   Accounting software licence setup       998314    2      7,500.00      15,000.00    18
+----------------------------------------------------------------------------------------
+
+Total taxable value:     55,000.00
+CGST @ 9%:                4,950.00
+SGST @ 9%:                4,950.00
+IGST:                         0.00
+----------------------------------------------------------------------------------------
+Invoice total:           64,900.00
+Amount in words:         Rupees Sixty Four Thousand Nine Hundred Only
+
+Professional and technical services. TDS under section 194J applies on payment.
+
+Bank: State Bank of India, A/c 00000012345678, IFSC SBIN0000001
+This is a computer generated invoice.

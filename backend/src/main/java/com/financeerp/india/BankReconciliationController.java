@@ -63,7 +63,7 @@ public class BankReconciliationController {
 			@RequestParam(defaultValue = "false") boolean unmatchedOnly) {
 		access.requireMembership(companyId);
 		List<Map<String, Object>> rows = jdbc.queryForList(
-				"SELECT id,txn_date AS \"txnDate\",description,amount,reference,matched_payment_id AS \"matchedPaymentId\" FROM bank_statement_lines WHERE company_id=? AND bank_account_id=? AND (? = false OR matched_payment_id IS NULL) ORDER BY txn_date DESC,id DESC LIMIT 200",
+				"SELECT id,txn_date AS \"txnDate\",description,amount,reference,matched_payment_id AS \"matchedPaymentId\" FROM bank_statement_lines WHERE company_id=? AND bank_account_id=? AND (? = false OR (matched_payment_id IS NULL AND journal_entry_id IS NULL)) ORDER BY txn_date DESC,id DESC LIMIT 200",
 				companyId, bankAccountId, unmatchedOnly);
 		List<Map<String, Object>> out = new ArrayList<>();
 		for (Map<String, Object> r : rows) {
@@ -87,13 +87,15 @@ public class BankReconciliationController {
 			@Valid @RequestBody MatchRequest req) {
 		long actor = access.requireRole(companyId, Set.of("OWNER", "ACCOUNTANT"));
 		List<Map<String, Object>> lineRows = jdbc.queryForList(
-				"SELECT bank_account_id AS bank,amount,matched_payment_id AS matched FROM bank_statement_lines WHERE company_id=? AND id=? FOR UPDATE",
+				"SELECT bank_account_id AS bank,amount,matched_payment_id AS matched,journal_entry_id AS journal FROM bank_statement_lines WHERE company_id=? AND id=? FOR UPDATE",
 				companyId, lineId);
 		if (lineRows.isEmpty())
 			throw new IllegalArgumentException("Statement line not found.");
 		Map<String, Object> line = lineRows.get(0);
 		if (line.get("matched") != null)
 			throw new IllegalArgumentException("This statement line is already matched.");
+		if (line.get("journal") != null)
+			throw new IllegalArgumentException("This statement line is already explained by a journal.");
 		List<Map<String, Object>> pay = jdbc.queryForList("SELECT p.bank_account_id AS bank," + SIGNED_PAYMENT
 				+ " AS signed,j.status AS status FROM payments p JOIN journal_entries j ON j.company_id=p.company_id AND j.id=p.journal_entry_id WHERE p.company_id=? AND p.id=?",
 				companyId, req.paymentId());
@@ -138,7 +140,7 @@ public class BankReconciliationController {
 				BigDecimal.class, companyId, bankAccountId, asOf);
 		BigDecimal statement = movement.add(openingBalance == null ? BigDecimal.ZERO : openingBalance);
 		Map<String, Object> unmatchedLines = jdbc.queryForMap(
-				"SELECT count(*) AS count,COALESCE(SUM(amount),0) AS total FROM bank_statement_lines WHERE company_id=? AND bank_account_id=? AND txn_date<=? AND matched_payment_id IS NULL",
+				"SELECT count(*) AS count,COALESCE(SUM(amount),0) AS total FROM bank_statement_lines WHERE company_id=? AND bank_account_id=? AND txn_date<=? AND matched_payment_id IS NULL AND journal_entry_id IS NULL",
 				companyId, bankAccountId, asOf);
 		Map<String, Object> unmatchedPayments = jdbc.queryForMap("SELECT count(*) AS count,COALESCE(SUM("
 				+ SIGNED_PAYMENT

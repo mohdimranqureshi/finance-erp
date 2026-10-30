@@ -6,8 +6,8 @@ spring:
 
 app:
   ai:
-    enabled: ${AI_ENABLED:false}
-    # Defaults to a local Ollama server; plain http is accepted only for localhost.
-    base-url: ${AI_BASE_URL:http://localhost:11434/v1}
-    api-key: ${AI_API_KEY:}
-    model: ${AI_MODEL:qwen2.5:7b-instruct}
+    enabled: ${AI_ENABLED:true}
+    # Groq's OpenAI-compatible endpoint. Set AI_BASE_URL=http://localhost:11434/v1 to use a local Ollama instead.
+    base-url: ${AI_BASE_URL:https://api.groq.com/openai/v1}
+    api-key: ${AI_API_KEY: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}
+    model: ${AI_MODEL:openai/gpt-oss-120b}

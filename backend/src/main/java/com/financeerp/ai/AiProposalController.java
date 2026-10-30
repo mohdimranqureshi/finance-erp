@@ -322,6 +322,10 @@ public class AiProposalController {
 					date(p, "journalDate"), p.get("description").asText(), lines, "AI:" + proposalId));
 			resultType = "JOURNAL";
 			resultId = ((Number) created.get("id")).longValue();
+			if (p.hasNonNull("statementLineId"))
+				jdbc.update(
+						"UPDATE bank_statement_lines SET journal_entry_id=? WHERE company_id=? AND id=? AND matched_payment_id IS NULL AND journal_entry_id IS NULL",
+						resultId, companyId, p.get("statementLineId").asLong());
 		}
 		jdbc.update(
 				"UPDATE ai_proposals SET status='ACCEPTED',decided_by_user_id=?,decided_at=now(),result_type=?,result_id=? WHERE company_id=? AND id=?",
@@ -358,7 +362,7 @@ public class AiProposalController {
 		return rows.get(0);
 	}
 
-	private Map<String, Object> view(long companyId, long id) {
+	Map<String, Object> view(long companyId, long id) {
 		return parse(jdbc.queryForMap(SELECT + " WHERE company_id=? AND id=?", companyId, id));
 	}
 
@@ -369,7 +373,7 @@ public class AiProposalController {
 		return out;
 	}
 
-	private long store(long companyId, String kind, ObjectNode payload, ArrayNode warnings, ArrayNode blockers,
+	long store(long companyId, String kind, ObjectNode payload, ArrayNode warnings, ArrayNode blockers,
 			BigDecimal confidence, String input, long actor) {
 		Long id = jdbc.queryForObject(
 				"INSERT INTO ai_proposals(company_id,kind,payload,warnings,blockers,confidence,model,input_sha256,input_chars,created_by_user_id) VALUES (?,?,?::jsonb,?::jsonb,?::jsonb,?,?,?,?,?) RETURNING id",

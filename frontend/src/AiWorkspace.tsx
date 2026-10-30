@@ -2,14 +2,15 @@ import { useEffect, useRef, useState } from 'react';
 import { Bot, Check, ClipboardCheck, Send, X } from 'lucide-react';
 import { api, money } from './api';
 import { useToastFeed } from './toast';
+import AiInsights, { FigureList, type Figure } from './AiInsights';
 
 type Issue = { code: string; message: string };
 type Proposal = { id: number; kind: 'BILL_EXTRACTION' | 'JOURNAL_DRAFT'; status: string; payload: any; warnings: Issue[]; blockers: Issue[]; confidence?: number | null; model: string; resultType?: string | null; resultId?: number | null };
 type Status = { enabled: boolean; mode: string; model: string; message: string };
 type Finding = { severity: string; code: string; title: string; detail: string; count: number };
 type Party = { id: number; name: string; partyType: string };
-type Answer = { answer: string; figuresUsed: string[]; notice: string };
-type Msg = { role: 'user' | 'assistant'; text: string; error?: boolean; pending?: boolean; figures?: string[]; notice?: string; findings?: Finding[] };
+type Answer = { answer: string; figuresUsed: Figure[]; notice: string; basis?: { from: string; to: string } };
+type Msg = { role: 'user' | 'assistant'; text: string; error?: boolean; pending?: boolean; figures?: Figure[]; basis?: { from: string; to: string }; notice?: string; findings?: Finding[] };
 type Mode = 'ask' | 'journal' | 'bill';
 
 const MODES: Record<Mode, { label: string; placeholder: string }> = {
@@ -57,7 +58,7 @@ export default function AiWorkspace({ companyId, onChanged, compact = false, onO
     return converse(m === 'bill' ? 'Capture this vendor bill:\n' + text : text, async () => {
       if (m === 'ask') {
         const a = await post<Answer>(`${base}/ai/ask`, { question: text });
-        return { role: 'assistant', text: a.answer, figures: a.figuresUsed, notice: a.notice };
+        return { role: 'assistant', text: a.answer, figures: a.figuresUsed, basis: a.basis, notice: a.notice };
       }
       await post(`${base}/ai/${m === 'bill' ? 'extract-bill' : 'draft-journal'}`, m === 'bill' ? { text } : { instruction: text });
       await load();
@@ -122,7 +123,7 @@ export default function AiWorkspace({ companyId, onChanged, compact = false, onO
         </div>}
         {messages.map((m, i) => <div key={i} className={`msg ${m.role}${m.error ? ' error' : ''}${m.pending ? ' pending' : ''}`}>
           {m.text}
-          {m.figures && m.figures.length > 0 && <p className="meta">Figures used: {m.figures.join('; ')}</p>}
+          {m.figures && m.figures.length > 0 && <FigureList figures={m.figures} basis={m.basis} base={base} />}
           {m.notice && <p className="meta">{m.notice}</p>}
           {m.findings && m.findings.length > 0 && <div className="tablewrap"><table><thead><tr><th>Severity</th><th>Finding</th><th>Detail</th><th className="right">Items</th></tr></thead><tbody>
             {m.findings.map(f => <tr key={f.code}><td><span className="chip">{f.severity}</span></td><td>{f.title}</td><td>{f.detail}</td><td className="right">{f.count}</td></tr>)}</tbody></table></div>}
@@ -147,5 +148,7 @@ export default function AiWorkspace({ companyId, onChanged, compact = false, onO
       <div className="panelhead"><div><h2>Awaiting your review</h2><p>Accepting creates a DRAFT; a different person must still approve it</p></div><span className="count">{proposals.length}</span></div>
       {proposals.map(card)}{!proposals.length && <p className="empty">No pending AI proposals.</p>}
     </section>}
+
+    {!compact && <AiInsights companyId={companyId} enabled={!!status?.enabled} onProposals={load} />}
   </>;
 }

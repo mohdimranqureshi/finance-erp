@@ -107,7 +107,10 @@ The LLM proposes; people approve. Output is validated on the server (GSTIN check
 
 - `POST .../ai/extract-bill` (pasted invoice text to a draft purchase bill proposal), `POST .../ai/draft-journal` (instruction to a journal proposal)
 - `GET .../ai/proposals`, `POST .../ai/proposals/{id}/accept|reject`
-- `POST .../ai/ask` answers only from the company's P&L, balance sheet, GST summary and open items
+- `POST .../ai/ask` answers only from the company's P&L, balance sheet, GST summary and open items; `figuresUsed` entries carry a `source` (account, invoice or bill) that the UI drills into
+- `GET .../ai/anomalies`, `GET .../ai/flux?from&to`, `GET .../ai/close-checklist[?periodId]`, `GET .../ai/metrics`: figures come from SQL and the report services; with `narrative=true` the AI only phrases them
+- `POST .../ai/categorise-bank-lines` (draft-journal proposals for unexplained statement lines, Flyway V12), `POST .../ai/reconcile-suggest` (exact-amount match candidates, AI breaks ties among them only)
+- `POST .../ai/extract-bill-file` (multipart `file`: PDF with selectable text, TXT or CSV, up to 1 MB). Images and scanned PDFs are refused: the model is text-only and no OCR is bundled
 - `GET .../ai/review[?narrative=true]` runs deterministic close checks (stuck journals, duplicate bills, unmatched bank lines, overdue receivables, open old periods); the AI only phrases the summary
 
 Any OpenAI-compatible chat-completions endpoint works, including a local one. It is off by default:
