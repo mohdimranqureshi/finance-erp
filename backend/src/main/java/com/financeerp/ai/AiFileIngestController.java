@@ -38,6 +38,15 @@ public class AiFileIngestController {
 
 	@PostMapping(value = "/extract-bill-file", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
 	public Map<String, Object> extractBillFile(@PathVariable long companyId, @RequestParam("file") MultipartFile file) {
+		return extract(companyId, file, false);
+	}
+
+	@PostMapping(value = "/extract-invoice-file", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+	public Map<String, Object> extractInvoiceFile(@PathVariable long companyId, @RequestParam("file") MultipartFile file) {
+		return extract(companyId, file, true);
+	}
+
+	private Map<String, Object> extract(long companyId, MultipartFile file, boolean sales) {
 		access.requireRole(companyId, Set.of("OWNER", "ACCOUNTANT"));
 		if (!llm.available())
 			throw new AiUnavailableException("AI is not enabled. Set app.ai.enabled=true and configure the provider (see README).");
@@ -67,7 +76,9 @@ public class AiFileIngestController {
 		if (text.isEmpty())
 			throw new IllegalArgumentException(
 					"No text was found in the file. A scanned PDF is an image and needs OCR, which is not available.");
-		Map<String, Object> out = new LinkedHashMap<>(proposals.extractBill(companyId, new AiProposalController.ExtractRequest(text)));
+		AiProposalController.ExtractRequest req = new AiProposalController.ExtractRequest(text);
+		Map<String, Object> out = new LinkedHashMap<>(
+				sales ? proposals.extractInvoice(companyId, req) : proposals.extractBill(companyId, req));
 		out.put("sourceFile", safeName(name));
 		return out;
 	}

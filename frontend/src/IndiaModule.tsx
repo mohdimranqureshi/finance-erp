@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { FileText, Landmark, Plus, Receipt, Sparkles, Users } from 'lucide-react';
 import { api, money } from './api';
 import { useToastFeed } from './toast';
+import InvoiceUpload from './InvoiceUpload';
 
 type Account = { id: number; code: string; name: string; accountType: string };
 type State = { code: string; name: string };
@@ -81,6 +82,7 @@ export default function IndiaModule({ companyId, accounts, onLedgerChanged }: { 
     const d = await post(`${base}/purchase-bills/${id}/book`);
     await load(); await onLedgerChanged(); setMessage(`Bill booked. Draft journal #${d.journalEntryId} now needs independent approval.`);
   });
+  const afterUpload = async (msg: string) => { await load(); setMessage(msg); };
   const suggest = () => run(async () => {
     const vendor = parties.find(p => String(p.id) === billVendor);
     const s = await api<Suggestion>(`${base}/ai/suggest-bill-coding`, { method: 'POST', body: JSON.stringify({ description: billDesc, vendorName: vendor?.name }) });
@@ -146,6 +148,7 @@ export default function IndiaModule({ companyId, accounts, onLedgerChanged }: { 
 
     <section className="panel below">
       <div className="panelhead"><div><h2><FileText size={16} /> GST sales invoices</h2><p>Issuing assigns a gapless number and creates a draft journal for maker-checker approval</p></div><span className="count">{invoices.length}</span></div>
+      <InvoiceUpload companyId={companyId} kind="sale" parties={customers} busy={busy} run={run} onCreated={afterUpload} />
       <form className="accountform" onSubmit={e => { e.preventDefault(); createInvoice(); }}>
         <label>Customer<select value={invCustomer} onChange={e => setInvCustomer(e.target.value)} required><option value="">Select</option>{customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
         <label>Date<input type="date" value={invDate} onChange={e => setInvDate(e.target.value)} required /></label>
@@ -162,6 +165,7 @@ export default function IndiaModule({ companyId, accounts, onLedgerChanged }: { 
 
     <section className="panel below">
       <div className="panelhead"><div><h2><Receipt size={16} /> Purchase bills (ITC and TDS)</h2><p>Duplicate vendor invoice numbers are rejected</p></div><span className="count">{bills.length}</span></div>
+      <InvoiceUpload companyId={companyId} kind="bill" parties={vendors} busy={busy} run={run} onCreated={afterUpload} />
       <form className="accountform" onSubmit={e => { e.preventDefault(); createBill(); }}>
         <label>Vendor<select value={billVendor} onChange={e => setBillVendor(e.target.value)} required><option value="">Select</option>{vendors.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
         <label>Vendor invoice no.<input value={billNo} onChange={e => setBillNo(e.target.value)} required /></label>

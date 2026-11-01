@@ -5,7 +5,7 @@ import { useToastFeed } from './toast';
 import AiInsights, { FigureList, type Figure } from './AiInsights';
 
 type Issue = { code: string; message: string };
-type Proposal = { id: number; kind: 'BILL_EXTRACTION' | 'JOURNAL_DRAFT'; status: string; payload: any; warnings: Issue[]; blockers: Issue[]; confidence?: number | null; model: string; resultType?: string | null; resultId?: number | null };
+type Proposal = { id: number; kind: 'BILL_EXTRACTION' | 'SALES_EXTRACTION' | 'JOURNAL_DRAFT'; status: string; payload: any; warnings: Issue[]; blockers: Issue[]; confidence?: number | null; model: string; resultType?: string | null; resultId?: number | null };
 type Status = { enabled: boolean; mode: string; model: string; message: string };
 type Finding = { severity: string; code: string; title: string; detail: string; count: number };
 type Party = { id: number; name: string; partyType: string };
@@ -27,12 +27,12 @@ export default function AiWorkspace({ companyId, onChanged, compact = false, onO
   const [status, setStatus] = useState<Status | null>(null), [busy, setBusy] = useState(false), [error, setError] = useState(''), [message, setMessage] = useState('');
   const [messages, setMessages] = useState<Msg[]>([]), [mode, setMode] = useState<Mode>('ask'), [input, setInput] = useState('');
   const threadEnd = useRef<HTMLDivElement>(null);
-  const [proposals, setProposals] = useState<Proposal[]>([]), [vendors, setVendors] = useState<Party[]>([]);
+  const [proposals, setProposals] = useState<Proposal[]>([]), [vendors, setVendors] = useState<Party[]>([]), [customers, setCustomers] = useState<Party[]>([]);
   const [fix, setFix] = useState<Record<number, { vendorId?: string; number?: string; date?: string }>>({});
 
   async function load() {
-    const [s, p, v] = await Promise.all([api<Status>('/api/v1/ai/status'), api<Proposal[]>(`${base}/ai/proposals?status=PROPOSED`), api<Party[]>(`${base}/parties?type=VENDOR`)]);
-    setStatus(s); setProposals(p); setVendors(v);
+    const [s, p, v, c] = await Promise.all([api<Status>('/api/v1/ai/status'), api<Proposal[]>(`${base}/ai/proposals?status=PROPOSED`), api<Party[]>(`${base}/parties?type=VENDOR`), api<Party[]>(`${base}/parties?type=CUSTOMER`)]);
+    setStatus(s); setProposals(p); setVendors(v); setCustomers(c);
   }
   useEffect(() => { setMessages([]); load().catch(e => setError(e.message)); }, [companyId]);
   useEffect(() => { threadEnd.current?.scrollIntoView({ block: 'end' }); }, [messages]);
@@ -75,7 +75,7 @@ export default function AiWorkspace({ companyId, onChanged, compact = false, onO
   };
   const accept = (p: Proposal) => run(async () => {
     const f = fix[p.id] || {};
-    await post(`${base}/ai/proposals/${p.id}/accept`, { vendorId: f.vendorId ? Number(f.vendorId) : undefined, vendorInvoiceNumber: f.number || undefined, billDate: f.date || undefined });
+    await post(`${base}/ai/proposals/${p.id}/accept`, { vendorId: p.kind === 'BILL_EXTRACTION' && f.vendorId ? Number(f.vendorId) : undefined, customerId: p.kind === 'SALES_EXTRACTION' && f.vendorId ? Number(f.vendorId) : undefined, vendorInvoiceNumber: f.number || undefined, billDate: f.date || undefined });
     await load(); await onChanged(); setMessage('Accepted as a DRAFT. It still needs independent approval before it reaches the ledger.');
   });
   const reject = (p: Proposal) => run(async () => { await post(`${base}/ai/proposals/${p.id}/reject`); await load(); });
@@ -84,20 +84,22 @@ export default function AiWorkspace({ companyId, onChanged, compact = false, onO
   const card = (p: Proposal) => {
     const f = fix[p.id] || {};
     const codes = p.blockers.map(b => b.code);
+    const doc = p.kind !== 'JOURNAL_DRAFT', sale = p.kind === 'SALES_EXTRACTION';
     return <div key={p.id} className="alert" style={{ marginBottom: 12 }}>
-      <strong>{p.kind === 'BILL_EXTRACTION' ? `Purchase bill ${p.payload.vendorInvoiceNumber || '(no number)'}` : `Journal: ${p.payload.description}`}</strong>
+      <strong>{sale ? 'Sales invoice' : p.kind === 'BILL_EXTRACTION' ? `Purchase bill ${p.payload.vendorInvoiceNumber || '(no number)'}` : `Journal: ${p.payload.description}`}</strong>
       {p.confidence != null && <span className="chip" style={{ marginLeft: 8 }}>confidence {Math.round(Number(p.confidence) * 100)}%</span>}
-      {p.kind === 'BILL_EXTRACTION' && <p>{p.payload.vendorName || 'Unknown vendor'} · {p.payload.billDate || 'no date'} · computed total {money(p.payload.computedTotal)}{p.payload.tdsSection ? ` · TDS ${p.payload.tdsSection} @ ${p.payload.tdsRate}% (verify)` : ''}</p>}
-      <div className="tablewrap"><table><thead>{p.kind === 'BILL_EXTRACTION'
+      {doc && <p>{(sale ? p.payload.customerName : p.payload.vendorName) || (sale ? 'Unknown customer' : 'Unknown vendor')} · {(sale ? p.payload.invoiceDate : p.payload.billDate) || 'no date'} · computed total {money(p.payload.computedTotal)}{p.payload.tdsSection ? ` · TDS ${p.payload.tdsSection} @ ${p.payload.tdsRate}% (verify)` : ''}</p>}
+      <div className="tablewrap"><table><thead>{doc
         ? <tr><th>Description</th><th>HSN/SAC</th><th className="right">Qty</th><th className="right">Price</th><th className="right">GST %</th></tr>
         : <tr><th>Account</th><th className="right">Debit</th><th className="right">Credit</th></tr>}</thead><tbody>
-        {p.payload.lines.map((l: any, i: number) => p.kind === 'BILL_EXTRACTION'
+        {p.payload.lines.map((l: any, i: number) => doc
           ? <tr key={i}><td>{l.description}</td><td className="mono">{l.hsnSac}</td><td className="right">{l.quantity}</td><td className="right">{money(l.unitPrice)}</td><td className="right">{l.gstRate}</td></tr>
           : <tr key={i}><td>{l.accountCode} — {l.accountName}</td><td className="right">{money(l.debit)}</td><td className="right">{money(l.credit)}</td></tr>)}</tbody></table></div>
       {p.warnings.map((w, i) => <p key={i} className="hint">Check: {w.message}</p>)}
       {p.blockers.map((b, i) => <p key={i} className="hint"><strong>Fix: </strong>{b.message}</p>)}
       <div className="accountform">
         {codes.includes('VENDOR') && <label>Vendor<select value={f.vendorId || ''} onChange={e => setFixField(p.id, { vendorId: e.target.value })}><option value="">Select</option>{vendors.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}</select></label>}
+        {codes.includes('CUSTOMER') && <label>Customer<select value={f.vendorId || ''} onChange={e => setFixField(p.id, { vendorId: e.target.value })}><option value="">Select</option>{customers.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}</select></label>}
         {codes.includes('INVOICE_NUMBER') && <label>Invoice number<input value={f.number || ''} onChange={e => setFixField(p.id, { number: e.target.value })} /></label>}
         {codes.includes('INVOICE_DATE') && <label>Invoice date<input type="date" value={f.date || ''} onChange={e => setFixField(p.id, { date: e.target.value })} /></label>}
         <button disabled={busy} onClick={() => accept(p)}><Check size={15} />Accept as draft</button>

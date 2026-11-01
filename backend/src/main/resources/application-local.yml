@@ -1,8 +1,14 @@
+#spring:
+ # datasource:
+  #  url: jdbc:postgresql://localhost:5432/finance_erp
+   # username: postgres
+    #password: Mega@2222
+
 spring:
   datasource:
-    url: jdbc:postgresql://localhost:5432/finance_erp
-    username: postgres
-    password: Mega@2222
+    url: jdbc:postgresql://ep-jolly-sunset-ar5g8wy7-pooler.c-4.us-west-2.aws.neon.tech/finance-erp?sslmode=require&channel_binding=required
+    username: neondb_owner
+    password: npg_4Nb2nUkixjIW
 
 app:
   ai:
