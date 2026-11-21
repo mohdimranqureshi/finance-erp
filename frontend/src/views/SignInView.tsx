@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { BookOpen, Building2, Eye, EyeOff, Lock, ShieldCheck, Sparkles } from 'lucide-react';
+import { BookOpen, Building2, Eye, EyeOff, KeyRound, Lock, ShieldCheck, Sparkles } from 'lucide-react';
 import { useToastFeed } from '../toast';
 
 const POINTS = [
@@ -10,17 +10,49 @@ const POINTS = [
 
 export default function SignInView({
   inviteToken, email, setEmail, password, setPassword, displayName, setDisplayName,
+  mfaStep, mfaCode, setMfaCode, useRecovery, setUseRecovery, onCancelMfa,
   busy, error, message, onSubmit,
 }: {
   inviteToken: string;
   email: string; setEmail: (v: string) => void;
   password: string; setPassword: (v: string) => void;
   displayName: string; setDisplayName: (v: string) => void;
+  mfaStep: boolean; mfaCode: string; setMfaCode: (v: string) => void;
+  useRecovery: boolean; setUseRecovery: (v: boolean) => void; onCancelMfa: () => void;
   busy: boolean; error: string; message: string; onSubmit: () => void;
 }) {
   const inviting = Boolean(inviteToken);
   const [showPassword, setShowPassword] = useState(false);
   useToastFeed(error, message);
+
+  if (mfaStep && !inviting) return <div className="auth-shell">
+    <div className="auth-split">
+      <form className="auth-card" onSubmit={e => { e.preventDefault(); onSubmit(); }}>
+        <span className="auth-badge"><KeyRound size={12} />Two-factor authentication</span>
+        <h1>Verify it's you</h1>
+        <p>{useRecovery
+          ? `Enter one of the recovery codes saved for ${email}. Each code works only once.`
+          : `Enter the 6-digit code from the authenticator app linked to ${email}.`}</p>
+
+        {useRecovery
+          ? <label>Recovery code
+            <input value={mfaCode} onChange={e => setMfaCode(e.target.value)} placeholder="XXXX-XXXX-XXXX-XXXX"
+              autoComplete="off" autoCapitalize="characters" spellCheck={false} maxLength={32} autoFocus required />
+          </label>
+          : <label>Authentication code
+            <input value={mfaCode} onChange={e => setMfaCode(e.target.value.replace(/\D/g, ''))} placeholder="123456"
+              inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} autoFocus required />
+          </label>}
+
+        <button className="block" disabled={busy}>{busy ? 'Please wait…' : 'Verify and sign in'}</button>
+        <button type="button" className="secondary block" disabled={busy} onClick={() => setUseRecovery(!useRecovery)}>
+          {useRecovery ? 'Use authenticator code instead' : 'Use a recovery code instead'}
+        </button>
+        <button type="button" className="secondary block" disabled={busy} onClick={onCancelMfa}>Back to sign in</button>
+        <small>Lost your device and recovery codes? Ask your administrator to reset two-factor authentication.</small>
+      </form>
+    </div>
+  </div>;
 
   return <div className="auth-shell">
     <div className="auth-split">

@@ -127,7 +127,8 @@ public class AiInsightsController {
 
 	private void tagDocuments(JsonNode rows, String prefix, String kind, Map<String, Map<String, Object>> sources) {
 		for (JsonNode r : rows) {
-			if (!r.isObject() || !r.has("id"))
+			// Opening-balance rows have a null id; they are not invoices/bills, so they are not citable as documents.
+			if (!r.isObject() || !r.hasNonNull("id"))
 				continue;
 			String ref = prefix + ":" + r.get("id").asText();
 			((ObjectNode) r).put("ref", ref);

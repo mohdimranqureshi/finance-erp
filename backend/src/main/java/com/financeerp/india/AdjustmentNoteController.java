@@ -83,11 +83,14 @@ public class AdjustmentNoteController {
 		if (req.vendorNoteNumber() == null || req.vendorNoteNumber().isBlank() || req.vendorNoteNumber().length() > 50)
 			throw new IllegalArgumentException("Vendor credit note number is required (maximum 50 characters).");
 		List<Map<String, Object>> rows = jdbc.queryForList(
-				"SELECT b.status,b.bill_date AS date,b.supply_type AS supply,b.total_amount AS total,b.itc_eligible AS itc,p.gstin AS gstin FROM purchase_bills b JOIN parties p ON p.company_id=b.company_id AND p.id=b.vendor_id WHERE b.company_id=? AND b.id=? FOR UPDATE OF b",
+				"SELECT b.status,b.bill_date AS date,b.supply_type AS supply,b.total_amount AS total,b.itc_eligible AS itc,b.reverse_charge AS rcm,p.gstin AS gstin FROM purchase_bills b JOIN parties p ON p.company_id=b.company_id AND p.id=b.vendor_id WHERE b.company_id=? AND b.id=? FOR UPDATE OF b",
 				companyId, billId);
 		if (rows.isEmpty())
 			throw new IllegalArgumentException("Bill not found.");
 		Map<String, Object> bill = rows.get(0);
+		if ((Boolean) bill.get("rcm"))
+			throw new IllegalArgumentException(
+					"Debit notes against reverse-charge bills are not supported yet; reverse the bill's journal and re-enter it.");
 		if (!"BOOKED".equals(bill.get("status")))
 			throw new IllegalArgumentException("Debit notes can only be raised against booked bills.");
 		LocalDate billDate = ((java.sql.Date) bill.get("date")).toLocalDate();

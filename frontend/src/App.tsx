@@ -1,5 +1,6 @@
 import {useCallback,useEffect,useState} from 'react';
-import {api,setBasicAuth,setUnauthorizedHandler} from './api';
+import {api,ensureCsrfToken,login,logout,MfaRequiredError,setUnauthorizedHandler} from './api';
+import type {SessionUser} from './api';
 import {useToastFeed} from './toast';
 import Sidebar from './components/Sidebar';
 import TopBar from './components/TopBar';
@@ -9,18 +10,26 @@ import SignInView from './views/SignInView';
 import OverviewView from './views/OverviewView';
 import CompanyView from './views/CompanyView';
 import UsersView from './views/UsersView';
+import ClientsView from './views/ClientsView';
+import Gstr2bView from './views/Gstr2bView';
+import TallyView from './views/TallyView';
+import SecurityView from './views/SecurityView';
 import JournalsView from './views/JournalsView';
 import ReportsView from './views/ReportsView';
 import AiWorkspace from './AiWorkspace';
 import type {Account,Company,Journal,Shell,TrialRow,View} from './types';
 const IDLE_MS=15*60*1000;
-const PAGES:Record<View,{title:string;subtitle:string}>={overview:{title:'Overview',subtitle:'Accounting you can inspect, verify, and trust.'},company:{title:'Company & accounts',subtitle:'Manage your team and chart of accounts.'},users:{title:'Users',subtitle:'Application accounts and administrator access.'},journals:{title:'Journals & ledger',subtitle:'Create, approve and post journals, and check the trial balance.'},reports:{title:'Reports',subtitle:'Run the ledger, profit and loss, and trial balance for any period you choose.'},ai:{title:'AI assistant',subtitle:'Ask questions, draft entries and review the close. AI proposes, people approve.'}};
+const PAGES:Record<View,{title:string;subtitle:string}>={overview:{title:'Overview',subtitle:'Accounting you can inspect, verify, and trust.'},clients:{title:'Clients',subtitle:'Every client you work for: close status and the approvals waiting on you.'},gstr2b:{title:'GSTR-2B ITC',subtitle:'Reconcile your purchases with GSTR-2B and see input tax credit at risk.'},tally:{title:'Tally import and export',subtitle:'Bring a TallyPrime day book in as draft journals, or send posted journals back.'},company:{title:'Company & accounts',subtitle:'Manage your team and chart of accounts.'},users:{title:'Users',subtitle:'Application accounts and administrator access.'},security:{title:'Security',subtitle:'Two-factor authentication for your account.'},journals:{title:'Journals & ledger',subtitle:'Create, approve and post journals, and check the trial balance.'},reports:{title:'Reports',subtitle:'Run the ledger, profit and loss, and trial balance for any period you choose.'},ai:{title:'AI assistant',subtitle:'Ask questions, draft entries and review the close. AI proposes, people approve.'}};
 export default function App(){
  const [email,setEmail]=useState('');
  const [password,setPassword]=useState('');
  const [displayName,setDisplayName]=useState('');
  const [authenticated,setAuthenticated]=useState(false);
  const [isAdmin,setIsAdmin]=useState(false);
+ const [mfaEnabled,setMfaEnabled]=useState(false);
+ const [mfaStep,setMfaStep]=useState(false);
+ const [mfaCode,setMfaCode]=useState('');
+ const [useRecovery,setUseRecovery]=useState(false);
  const [inviteToken,setInviteToken]=useState(()=>new URLSearchParams(window.location.hash.slice(1)).get('invite')||'');
  const [companies,setCompanies]=useState<Company[]>([]);
  const [companyId,setCompanyId]=useState<number|''>('');
@@ -57,14 +66,29 @@ export default function App(){
  },[]);
  const reload=useCallback(async()=>{if(companyId!=='')await loadData(Number(companyId))},[companyId,loadData]);
 
+ function startSession(me:SessionUser){
+  setEmail(me.email);setIsAdmin(me.admin);setMfaEnabled(me.mfaEnabled);setAuthenticated(true);
+ }
  async function signIn(){
   if(!email.trim()||!password)throw Error('Enter your email and password.');
-  setBasicAuth(btoa(`${email.trim()}:${password}`));
+  const code=mfaCode.trim();
+  if(mfaStep&&!code)throw Error(useRecovery?'Enter one of your recovery codes.':'Enter the 6-digit code from your authenticator app.');
+  let me:SessionUser;
+  try{
+   me=await login(email.trim(),password,mfaStep?(useRecovery?{recoveryCode:code}:{totpCode:code}):undefined);
+  }catch(e){
+   if(e instanceof MfaRequiredError){
+    setMfaCode('');
+    if(!mfaStep){setMfaStep(true);setMessage(e.message);return}
+   }
+   throw e;
+  }
+  setPassword('');setMfaStep(false);setMfaCode('');setUseRecovery(false);
   await loadCompanies();
-  const me=await api<{admin:boolean}>('/api/v1/auth/me');
-  setIsAdmin(me.admin);setAuthenticated(true);
+  startSession(me);
   setMessage('Signed in. Company access is enforced by the API.');
  }
+ function cancelMfa(){setMfaStep(false);setMfaCode('');setUseRecovery(false);setPassword('');setError('');setMessage('')}
  async function acceptInvitation(){
   if(!inviteToken)throw Error('Invitation token is missing. Open the invitation link from the company owner.');
   if(password.length<12)throw Error('Use a password with at least 12 characters.');
@@ -74,9 +98,10 @@ export default function App(){
   setPassword('');
   setMessage('Invitation accepted. Sign in with the email address invited by the company owner and the password you just created.');
  }
- function signOut(notice=''){
-  setBasicAuth('');
-  setAuthenticated(false);setIsAdmin(false);setPassword('');
+ function signOut(notice='',endServerSession=true){
+  if(endServerSession)void logout();
+  setAuthenticated(false);setIsAdmin(false);setMfaEnabled(false);setPassword('');
+  setMfaStep(false);setMfaCode('');setUseRecovery(false);
   setCompanies([]);setCompanyId('');setAccounts([]);setJournals([]);setTrial([]);
   setAiOpen(false);setView('overview');setError('');setMessage(notice);
  }
@@ -88,7 +113,11 @@ export default function App(){
  });
 
  useEffect(()=>{document.documentElement.dataset.theme=theme;localStorage.setItem('theme',theme)},[theme]);
- useEffect(()=>{setUnauthorizedHandler(()=>{setBasicAuth('');if(authenticated)signOut('Your session has expired. Please sign in again.')});return()=>setUnauthorizedHandler(null)},[authenticated]);
+ useEffect(()=>{
+  // Resume an existing server session after a page reload; otherwise just make sure a CSRF cookie exists.
+  api<SessionUser>('/api/v1/auth/me').then(async me=>{await loadCompanies();startSession(me)}).catch(()=>ensureCsrfToken());
+ },[]);
+ useEffect(()=>{setUnauthorizedHandler(()=>{if(authenticated)signOut('Your session has expired. Please sign in again.',false)});return()=>setUnauthorizedHandler(null)},[authenticated]);
  useEffect(()=>{if(!authenticated)return;let t=0;const events=['mousedown','keydown','touchstart','scroll'];const reset=()=>{window.clearTimeout(t);t=window.setTimeout(()=>signOut('Signed out after 15 minutes of inactivity.'),IDLE_MS)};events.forEach(e=>window.addEventListener(e,reset,{passive:true}));reset();return()=>{window.clearTimeout(t);events.forEach(e=>window.removeEventListener(e,reset))}},[authenticated]);
  useEffect(()=>{if(companyId!=='')loadData(Number(companyId)).catch(e=>setError(e.message))},[companyId,loadData]);
 
@@ -97,6 +126,8 @@ export default function App(){
  if(!authenticated) return <SignInView inviteToken={inviteToken}
   email={email} setEmail={setEmail} password={password} setPassword={setPassword}
   displayName={displayName} setDisplayName={setDisplayName}
+  mfaStep={mfaStep} mfaCode={mfaCode} setMfaCode={setMfaCode}
+  useRecovery={useRecovery} setUseRecovery={v=>{setUseRecovery(v);setMfaCode('')}} onCancelMfa={cancelMfa}
   busy={busy} error={error} message={message}
   onSubmit={()=>run(inviteToken?acceptInvitation:signIn)}/>;
 
@@ -108,8 +139,10 @@ export default function App(){
     onToggleTheme={()=>setTheme(theme==='dark'?'light':'dark')}
     onRefresh={()=>run(async()=>{await loadCompanies();await reload()})}/>
 
-   {view!=='users'&&<CompanyStrip companies={companies} companyId={companyId}
+   {view!=='users'&&view!=='security'&&view!=='clients'&&<CompanyStrip companies={companies} companyId={companyId}
     onSelect={setCompanyId} onCreate={createCompany} busy={busy}/>}
+
+   {view==='clients'&&<ClientsView shell={shell} onOpenCompany={id=>{setCompanyId(id);setView('journals')}}/>}
 
    {view==='overview'&&<OverviewView companyId={companyId} accounts={accounts} journals={journals}
     debits={debits} credits={credits} reload={reload}/>}
@@ -118,10 +151,16 @@ export default function App(){
 
    {view==='users'&&isAdmin&&<UsersView shell={shell} currentEmail={email}/>}
 
+   {view==='security'&&<SecurityView shell={shell} mfaEnabled={mfaEnabled} onChanged={setMfaEnabled}/>}
+
    {view==='journals'&&<JournalsView companyId={companyId} accounts={accounts} journals={journals}
     trial={trial} debits={debits} credits={credits} reload={reload} shell={shell}/>}
 
    {view==='reports'&&<ReportsView companyId={companyId} accounts={accounts} shell={shell}/>}
+
+   {view==='gstr2b'&&<Gstr2bView companyId={companyId} shell={shell}/>}
+
+   {view==='tally'&&<TallyView companyId={companyId} shell={shell}/>}
 
    {view==='ai'&&(companyId!==''
     ? <AiWorkspace companyId={Number(companyId)} onChanged={reload}/>

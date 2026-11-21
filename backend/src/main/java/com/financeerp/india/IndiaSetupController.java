@@ -23,7 +23,7 @@ public class IndiaSetupController {
 	}
 
 	public record ProfileRequest(String gstin, String pan, @NotBlank String stateCode, @Size(max = 200) String addressLine,
-			@Size(max = 100) String city, @Pattern(regexp = "([1-9][0-9]{5})?") String pincode) {
+			@Size(max = 100) String city, @Pattern(regexp = "([1-9][0-9]{5})?") String pincode, String tan) {
 	}
 
 	// code, name, type, system key (nullable)
@@ -32,27 +32,38 @@ public class IndiaSetupController {
 			{ "1200", "GST Input Credit - CGST", "ASSET", "INPUT_CGST" },
 			{ "1210", "GST Input Credit - SGST", "ASSET", "INPUT_SGST" },
 			{ "1220", "GST Input Credit - IGST", "ASSET", "INPUT_IGST" },
-			{ "1230", "TDS Receivable", "ASSET", "TDS_RECEIVABLE" }, { "2000", "Trade Payables", "LIABILITY", "AP" },
+			{ "1230", "TDS Receivable", "ASSET", "TDS_RECEIVABLE" },
+			{ "1500", "Property, Plant and Equipment", "ASSET", "FIXED_ASSETS" },
+			{ "1590", "Accumulated Depreciation", "ASSET", "ACCUMULATED_DEPRECIATION" },
+			{ "2000", "Trade Payables", "LIABILITY", "AP" },
 			{ "2100", "GST Output - CGST", "LIABILITY", "OUTPUT_CGST" },
 			{ "2110", "GST Output - SGST", "LIABILITY", "OUTPUT_SGST" },
 			{ "2120", "GST Output - IGST", "LIABILITY", "OUTPUT_IGST" },
+			{ "2130", "GST Payable under Reverse Charge - CGST", "LIABILITY", "RCM_CGST" },
+			{ "2140", "GST Payable under Reverse Charge - SGST", "LIABILITY", "RCM_SGST" },
+			{ "2150", "GST Payable under Reverse Charge - IGST", "LIABILITY", "RCM_IGST" },
 			{ "2200", "TDS Payable", "LIABILITY", "TDS_PAYABLE" },
+			{ "2210", "TCS Payable", "LIABILITY", "TCS_PAYABLE" },
 			{ "2300", "Deferred Revenue", "LIABILITY", "DEFERRED_REVENUE" }, { "3000", "Share Capital", "EQUITY", null },
 			{ "3100", "Reserves and Surplus", "EQUITY", null },
+			{ "3900", "Opening Balance Adjustment", "EQUITY", "OPENING_BALANCE" },
 			{ "4000", "Revenue from Operations", "INCOME", "SALES" },
 			{ "4050", "Sales Returns and Allowances", "INCOME", "SALES_RETURNS" },
 			{ "4900", "Other Income", "INCOME", null },
+			{ "4910", "Profit on Disposal of Fixed Assets", "INCOME", "ASSET_DISPOSAL_GAIN" },
 			{ "5000", "Purchases and Cost of Services", "EXPENSE", "PURCHASES" },
 			{ "5100", "Employee Benefit Expenses", "EXPENSE", null }, { "5200", "Rent", "EXPENSE", null },
 			{ "5300", "Professional and Legal Fees", "EXPENSE", null },
-			{ "5400", "Depreciation and Amortisation", "EXPENSE", null }, { "5900", "Other Expenses", "EXPENSE", null } };
+			{ "5400", "Depreciation and Amortisation", "EXPENSE", "DEPRECIATION" },
+			{ "5900", "Other Expenses", "EXPENSE", null },
+			{ "5910", "Loss on Disposal of Fixed Assets", "EXPENSE", "ASSET_DISPOSAL_LOSS" } };
 
 	@GetMapping("/api/v1/india/reference")
 	public Map<String, Object> reference() {
 		List<Map<String, String>> states = new ArrayList<>();
 		IndiaTax.STATES.forEach((code, name) -> states.add(Map.of("code", code, "name", name)));
 		return Map.of("states", states, "gstRates", IndiaTax.allowedGstRates(java.time.LocalDate.now()), "tdsSections",
-				IndiaTax.TDS_SECTIONS, "note",
+				IndiaTax.TDS_SECTIONS, "tcsSections", IndiaTax.TCS_SECTIONS, "note",
 				"Rates are indicative reference data. Confirm GST/TDS treatment with a qualified Indian tax professional.");
 	}
 
@@ -60,7 +71,7 @@ public class IndiaSetupController {
 	public Map<String, Object> profile(@PathVariable long companyId) {
 		access.requireMembership(companyId);
 		return jdbc.queryForMap(
-				"SELECT gstin,pan,state_code AS \"stateCode\",address_line AS \"addressLine\",city,pincode FROM companies WHERE id=?", companyId);
+				"SELECT gstin,pan,tan,state_code AS \"stateCode\",address_line AS \"addressLine\",city,pincode FROM companies WHERE id=?", companyId);
 	}
 
 	@PutMapping("/api/v1/companies/{companyId}/india/profile")
@@ -86,8 +97,17 @@ public class IndiaSetupController {
 			if (gstin != null && !gstin.substring(2, 12).equals(pan))
 				throw new IllegalArgumentException("PAN must match characters 3-12 of the GSTIN.");
 		}
+		String tan = blankToNull(req.tan());
+		if (tan != null) {
+			tan = tan.toUpperCase();
+			if (!tan.matches("[A-Z]{4}[0-9]{5}[A-Z]"))
+				throw new IllegalArgumentException("TAN is invalid (format AAAA99999A).");
+		}
 		jdbc.update("UPDATE companies SET gstin=?,pan=?,state_code=?,address_line=?,city=?,pincode=? WHERE id=?", gstin, pan,
 				state, blankToNull(req.addressLine()), blankToNull(req.city()), blankToNull(req.pincode()), companyId);
+		// Clients that do not send "tan" leave it unchanged; an empty string clears it.
+		if (req.tan() != null)
+			jdbc.update("UPDATE companies SET tan=? WHERE id=?", tan, companyId);
 		poster.audit(companyId, "INDIA_PROFILE_UPDATED", "COMPANY", companyId, "GST profile updated");
 		return profile(companyId);
 	}
@@ -101,6 +121,12 @@ public class IndiaSetupController {
 			created += jdbc.update(
 					"INSERT INTO accounts(company_id,code,name,account_type,system_key) VALUES (?,?,?,?,?) ON CONFLICT (company_id,code) DO NOTHING",
 					companyId, a[0], a[1], a[2], a[3]);
+		// Charts seeded before a system key existed (e.g. 5400 Depreciation) adopt the key when the type matches.
+		for (String[] a : CHART)
+			if (a[3] != null)
+				jdbc.update(
+						"UPDATE accounts SET system_key=? WHERE company_id=? AND code=? AND account_type=? AND system_key IS NULL AND NOT EXISTS (SELECT 1 FROM accounts WHERE company_id=? AND system_key=?)",
+						a[3], companyId, a[0], a[2], companyId, a[3]);
 		for (String[] a : CHART)
 			if (a[3] != null) {
 				Integer n = jdbc.queryForObject("SELECT count(*) FROM accounts WHERE company_id=? AND system_key=?",

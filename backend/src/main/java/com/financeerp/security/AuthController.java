@@ -52,6 +52,8 @@ public class AuthController {
 	@GetMapping("/me")
 	public Map<String, Object> me(Authentication auth) {
 		boolean admin = auth.getAuthorities().stream().anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority()));
-		return Map.of("email", auth.getName(), "admin", admin);
+		Boolean mfaEnabled = jdbc.query("SELECT mfa_enabled FROM app_users WHERE lower(email)=lower(?)",
+				rs -> rs.next() && rs.getBoolean(1), auth.getName());
+		return Map.of("email", auth.getName(), "admin", admin, "mfaEnabled", Boolean.TRUE.equals(mfaEnabled));
 	}
 }

@@ -28,6 +28,7 @@ public class GstReturnController {
 			throw new IllegalArgumentException("'from' must be on or before 'to'.");
 		List<Map<String, Object>> rows = jdbc.queryForList("""
 				SELECT i.id,i.invoice_number AS num,i.invoice_date AS dt,i.place_of_supply AS pos,i.total_amount AS val,
+				       i.total_amount-i.tcs_amount AS gstval,
 				       i.supply_type AS supply,p.gstin AS ctin,l.gst_rate AS rt,l.hsn_sac AS hsn,l.quantity AS qty,
 				       l.taxable_amount AS txval,l.cgst_amount AS camt,l.sgst_amount AS samt,l.igst_amount AS iamt
 				FROM sales_invoices i
@@ -46,7 +47,8 @@ public class GstReturnController {
 			String key = String.valueOf(r.get("id"));
 			boolean registered = r.get("ctin") != null;
 			BigDecimal val = (BigDecimal) r.get("val");
-			boolean large = !registered && "INTER_STATE".equals(r.get("supply")) && val.compareTo(B2C_LARGE_LIMIT) > 0;
+			boolean large = !registered && "INTER_STATE".equals(r.get("supply"))
+					&& ((BigDecimal) r.get("gstval")).compareTo(B2C_LARGE_LIMIT) > 0;
 			if (registered || large) {
 				Map<String, Object> inv = invoices.computeIfAbsent(key, k -> {
 					Map<String, Object> m = new LinkedHashMap<>();

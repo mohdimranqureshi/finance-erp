@@ -23,7 +23,7 @@ public class PurchaseBillController {
 			 b.supply_type AS "supplyType",b.taxable_amount AS "taxableAmount",b.cgst_amount AS "cgstAmount",
 			 b.sgst_amount AS "sgstAmount",b.igst_amount AS "igstAmount",b.total_amount AS "totalAmount",
 			 b.itc_eligible AS "itcEligible",b.tds_section AS "tdsSection",b.tds_rate AS "tdsRate",
-			 b.tds_amount AS "tdsAmount",b.status,b.journal_entry_id AS "journalEntryId",j.status AS "journalStatus"
+			 b.tds_amount AS "tdsAmount",b.reverse_charge AS "reverseCharge",b.status,b.journal_entry_id AS "journalEntryId",j.status AS "journalStatus"
 			FROM purchase_bills b
 			JOIN parties p ON p.company_id=b.company_id AND p.id=b.vendor_id
 			LEFT JOIN journal_entries j ON j.company_id=b.company_id AND j.id=b.journal_entry_id
@@ -45,10 +45,11 @@ public class PurchaseBillController {
 			Long expenseAccountId) {
 	}
 
+	/** reverseCharge: the recipient pays the GST (section 9(3)/9(4)); the supplier's invoice carries no GST. */
 	public record CreateRequest(@NotNull Long vendorId, @NotBlank @Size(max = 50) String vendorInvoiceNumber,
 			@NotNull LocalDate billDate, LocalDate dueDate, Boolean itcEligible,
 			@Pattern(regexp = "[0-9A-Z]{2,10}") String tdsSection, BigDecimal tdsRate,
-			@NotEmpty @Size(max = GstSupport.MAX_LINES) List<@Valid LineRequest> lines) {
+			@NotEmpty @Size(max = GstSupport.MAX_LINES) List<@Valid LineRequest> lines, Boolean reverseCharge) {
 	}
 
 	@PostMapping
@@ -58,6 +59,11 @@ public class PurchaseBillController {
 		GstSupport.CompanyProfile company = gst.companyProfile(companyId);
 		Map<String, Object> vendor = gst.party(companyId, req.vendorId(), "VENDOR");
 		boolean vendorRegistered = vendor.get("gstin") != null;
+		boolean rcm = Boolean.TRUE.equals(req.reverseCharge());
+		if (rcm && !company.gstRegistered())
+			throw new IllegalArgumentException("Reverse charge applies only when the company is GST-registered.");
+		// Under RCM the company, not the supplier, is liable for the tax, so rates are allowed for unregistered suppliers.
+		boolean taxApplicable = rcm || vendorRegistered;
 		if (req.dueDate() != null && req.dueDate().isBefore(req.billDate()))
 			throw new IllegalArgumentException("Due date cannot be before the bill date.");
 		boolean inter = !company.stateCode().equals(((String) vendor.get("stateCode")).trim());
@@ -77,7 +83,7 @@ public class PurchaseBillController {
 		List<Long> accounts = new ArrayList<>();
 		BigDecimal taxable = BigDecimal.ZERO, cgst = BigDecimal.ZERO, sgst = BigDecimal.ZERO, igst = BigDecimal.ZERO;
 		for (LineRequest l : req.lines()) {
-			gst.checkLine(l.quantity(), l.unitPrice(), l.gstRate(), l.hsnSac(), req.billDate(), vendorRegistered);
+			gst.checkLine(l.quantity(), l.unitPrice(), l.gstRate(), l.hsnSac(), req.billDate(), taxApplicable);
 			long account;
 			if (l.expenseAccountId() != null) {
 				gst.requireAccount(companyId, l.expenseAccountId(), "EXPENSE");
@@ -97,15 +103,18 @@ public class PurchaseBillController {
 			sgst = sgst.add(t.sgst());
 			igst = igst.add(t.igst());
 		}
-		BigDecimal total = taxable.add(cgst).add(sgst).add(igst);
+		BigDecimal tax = cgst.add(sgst).add(igst);
+		if (rcm && tax.signum() == 0)
+			throw new IllegalArgumentException("A reverse-charge bill needs the applicable GST rate on its lines.");
+		BigDecimal total = rcm ? taxable : taxable.add(tax);
 		BigDecimal tds = req.tdsSection() == null ? BigDecimal.ZERO.setScale(2) : IndiaTax.tds(taxable, req.tdsRate());
 		if (total.signum() <= 0)
 			throw new IllegalArgumentException("Bill total must be greater than zero.");
 		Long id = jdbc.queryForObject(
-				"INSERT INTO purchase_bills(company_id,vendor_id,vendor_invoice_number,bill_date,due_date,place_of_supply,supply_type,taxable_amount,cgst_amount,sgst_amount,igst_amount,total_amount,itc_eligible,tds_section,tds_rate,tds_amount,created_by_user_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id",
+				"INSERT INTO purchase_bills(company_id,vendor_id,vendor_invoice_number,bill_date,due_date,place_of_supply,supply_type,taxable_amount,cgst_amount,sgst_amount,igst_amount,total_amount,itc_eligible,tds_section,tds_rate,tds_amount,created_by_user_id,reverse_charge) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id",
 				Long.class, companyId, req.vendorId(), req.vendorInvoiceNumber().trim(), req.billDate(), req.dueDate(),
 				company.stateCode(), inter ? "INTER_STATE" : "INTRA_STATE", taxable, cgst, sgst, igst, total, itc,
-				req.tdsSection(), req.tdsRate(), tds, actor);
+				req.tdsSection(), req.tdsRate(), tds, actor, rcm);
 		for (int i = 0; i < req.lines().size(); i++) {
 			LineRequest l = req.lines().get(i);
 			IndiaTax.Taxed t = taxed.get(i);
@@ -144,7 +153,7 @@ public class PurchaseBillController {
 	public Map<String, Object> book(@PathVariable long companyId, @PathVariable long billId) {
 		long actor = access.requireRole(companyId, Set.of("OWNER", "ACCOUNTANT"));
 		List<Map<String, Object>> rows = jdbc.queryForList(
-				"SELECT status,bill_date AS \"billDate\",vendor_invoice_number AS ref,cgst_amount AS cgst,sgst_amount AS sgst,igst_amount AS igst,total_amount AS total,tds_amount AS tds,itc_eligible AS itc FROM purchase_bills WHERE company_id=? AND id=? FOR UPDATE",
+				"SELECT status,bill_date AS \"billDate\",vendor_invoice_number AS ref,cgst_amount AS cgst,sgst_amount AS sgst,igst_amount AS igst,total_amount AS total,tds_amount AS tds,itc_eligible AS itc,reverse_charge AS rcm FROM purchase_bills WHERE company_id=? AND id=? FOR UPDATE",
 				companyId, billId);
 		if (rows.isEmpty())
 			throw new IllegalArgumentException("Bill not found.");
@@ -171,6 +180,12 @@ public class PurchaseBillController {
 			addInput(lines, companyId, "INPUT_SGST", sgst, ref);
 			addInput(lines, companyId, "INPUT_IGST", igst, ref);
 		}
+		// Reverse charge: the company owes the GST to the government (paid in cash), not to the supplier.
+		if ((Boolean) bill.get("rcm")) {
+			addRcmLiability(lines, companyId, "RCM_CGST", cgst, ref);
+			addRcmLiability(lines, companyId, "RCM_SGST", sgst, ref);
+			addRcmLiability(lines, companyId, "RCM_IGST", igst, ref);
+		}
 		if (tds.signum() > 0)
 			lines.add(new LedgerPoster.Line(poster.systemAccount(companyId, "TDS_PAYABLE"), ref + " TDS",
 					BigDecimal.ZERO, tds));
@@ -182,6 +197,12 @@ public class PurchaseBillController {
 				journalId, companyId, billId);
 		poster.audit(companyId, "PURCHASE_BILL_BOOKED", "PURCHASE_BILL", billId, String.valueOf(bill.get("ref")));
 		return get(companyId, billId);
+	}
+
+	private void addRcmLiability(List<LedgerPoster.Line> lines, long companyId, String key, BigDecimal amount, String ref) {
+		if (amount.signum() > 0)
+			lines.add(new LedgerPoster.Line(poster.systemAccount(companyId, key), ref + " " + key, BigDecimal.ZERO,
+					amount));
 	}
 
 	private void addInput(List<LedgerPoster.Line> lines, long companyId, String key, BigDecimal amount, String ref) {

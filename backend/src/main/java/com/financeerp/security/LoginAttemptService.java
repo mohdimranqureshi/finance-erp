@@ -29,12 +29,17 @@ public class LoginAttemptService {
 
 	@EventListener
 	void onFailure(AuthenticationFailureBadCredentialsEvent event) {
+		recordFailure(event.getAuthentication().getName());
+	}
+
+	/** Counts a failed password or second-factor attempt for this email. */
+	public void recordFailure(String email) {
 		Instant now = Instant.now();
 		if (states.size() >= MAX_TRACKED)
 			states.values().removeIf(s -> expired(s, now));
 		if (states.size() >= MAX_TRACKED)
 			return;
-		states.merge(key(event.getAuthentication().getName()), new State(1, now, null), (old, fresh) -> {
+		states.merge(key(email), new State(1, now, null), (old, fresh) -> {
 			if (old.lockedUntil() != null && now.isBefore(old.lockedUntil()))
 				return old;
 			boolean stale = old.lockedUntil() != null || now.isAfter(old.windowStart().plus(WINDOW));
@@ -46,7 +51,12 @@ public class LoginAttemptService {
 
 	@EventListener
 	void onSuccess(AuthenticationSuccessEvent event) {
-		states.remove(key(event.getAuthentication().getName()));
+		recordSuccess(event.getAuthentication().getName());
+	}
+
+	/** Clears failures; call only after every required factor has been verified. */
+	public void recordSuccess(String email) {
+		states.remove(key(email));
 	}
 
 	private static boolean expired(State s, Instant now) {

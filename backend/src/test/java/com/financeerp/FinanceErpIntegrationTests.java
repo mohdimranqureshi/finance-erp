@@ -321,6 +321,84 @@ class FinanceErpIntegrationTests {
         assertThat(review.get("findings")).isNotNull();
     }
 
+    @Test void gstr2bReconcilesInvoicesAndCreditNotesDraftsBillsAndFollowUpEmails() throws Exception {
+        String base = "http://localhost:" + port;
+        post(base + "/api/v1/auth/register", Map.of("email", "g2b-owner@example.test", "password", "a-strong-g2b-owner-pw", "displayName", "G2B Owner"), null, HttpStatus.OK);
+        post(base + "/api/v1/auth/register", Map.of("email", "g2b-approver@example.test", "password", "a-strong-g2b-approver-pw", "displayName", "G2B Approver"), null, HttpStatus.OK);
+        TestRestTemplate owner = rest.withBasicAuth("g2b-owner@example.test", "a-strong-g2b-owner-pw");
+        TestRestTemplate approver = rest.withBasicAuth("g2b-approver@example.test", "a-strong-g2b-approver-pw");
+        long companyId = number(post(base + "/api/v1/companies", Map.of("name", "G2B Company", "baseCurrency", "INR"), owner, HttpStatus.OK).get("id"));
+        String co = base + "/api/v1/companies/" + companyId;
+        post(co + "/members", Map.of("email", "g2b-approver@example.test", "role", "APPROVER"), owner, HttpStatus.OK);
+        owner.put(co + "/india/profile", Map.of("gstin", "27AAPFU0939F1ZV", "stateCode", "27"));
+        post(co + "/india/chart-of-accounts", Map.of(), owner, HttpStatus.OK);
+        long vendorId = number(post(co + "/parties", Map.of("partyType", "VENDOR", "name", "Law Associates", "gstin", "29AAPFU0939F1ZR", "stateCode", "29"), owner, HttpStatus.OK).get("id"));
+        LocalDate today = LocalDate.now();
+        for (String number : List.of("V-001", "V-002"))
+            post(co + "/purchase-bills", Map.of("vendorId", vendorId, "vendorInvoiceNumber", number, "billDate", today.toString(),
+                "lines", List.of(Map.of("description", "Legal fees", "hsnSac", "998211", "quantity", 1, "unitPrice", 10000, "gstRate", 18))), owner, HttpStatus.OK);
+
+        String dt = today.format(java.time.format.DateTimeFormatter.ofPattern("dd-MM-yyyy"));
+        String json = """
+            {"data":{"gstin":"27AAPFU0939F1ZV","rtnprd":"%s","docdata":{
+              "b2b":[{"ctin":"29AAPFU0939F1ZR","trdnm":"Law Associates","inv":[
+                {"inum":"V/001","dt":"%s","val":11800.5,"rev":"N","itcavl":"Y","txval":10000.5,"igst":1800,"cgst":0,"sgst":0,"cess":0},
+                {"inum":"V-003","dt":"%s","val":5900,"rev":"N","itcavl":"Y","txval":5000,"igst":900,"cgst":0,"sgst":0,"cess":0,
+                 "items":[{"rt":18,"txval":5000,"igst":900}]}]}],
+              "cdnr":[{"ctin":"29AAPFU0939F1ZR","nt":[
+                {"ntnum":"CN-9","typ":"C","dt":"%s","val":1180,"rev":"N","itcavl":"Y","txval":1000,"igst":180,"cgst":0,"sgst":0,"cess":0}]}],
+              "isd":[{"doclist":[{"docnum":"ISD-1"}]}]}}}
+            """.formatted(String.format("%02d%d", today.getMonthValue(), today.getYear()), dt, dt, dt);
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        HttpEntity<String> upload = new HttpEntity<>(json, headers);
+
+        post(co + "/gstr2b/imports", upload, approver, HttpStatus.FORBIDDEN);
+        Map<String,Object> summary = post(co + "/gstr2b/imports", upload, owner, HttpStatus.OK);
+        long importId = number(summary.get("id"));
+        Map<?,?> counts = (Map<?,?>) summary.get("counts");
+        assertThat(number(counts.get("MATCHED"))).isEqualTo(1);
+        assertThat(number(counts.get("MISSING_IN_2B"))).isEqualTo(1);
+        assertThat(number(counts.get("MISSING_IN_BOOKS"))).isEqualTo(2);
+        assertThat(number(summary.get("skippedDocuments"))).isEqualTo(1);
+        assertThat(new java.math.BigDecimal(summary.get("itcAtRisk").toString())).isEqualByComparingTo("1800");
+        assertThat(new java.math.BigDecimal(summary.get("itcNotRecordedInBooks").toString())).isEqualByComparingTo("900");
+        assertThat(new java.math.BigDecimal(summary.get("itcToReverse").toString())).isEqualByComparingTo("180");
+        post(co + "/gstr2b/imports", upload, owner, HttpStatus.BAD_REQUEST);
+
+        List<Map<String,Object>> missing2b = owner.getForEntity(co + "/gstr2b/imports/" + importId + "/items?status=MISSING_IN_2B", List.class).getBody();
+        assertThat(missing2b).singleElement().satisfies(i -> assertThat(i.get("billInvoiceNumber")).isEqualTo("V-002"));
+        post(co + "/gstr2b/items/" + number(missing2b.get(0).get("id")) + "/resolve", Map.of("resolution", "FOLLOW_UP_VENDOR", "note", "Emailed supplier"), owner, HttpStatus.OK);
+
+        List<Map<String,Object>> missingBooks = owner.getForEntity(co + "/gstr2b/imports/" + importId + "/items?status=MISSING_IN_BOOKS", List.class).getBody();
+        long invoiceItem = number(missingBooks.stream().filter(i -> "INVOICE".equals(i.get("docType"))).findFirst().orElseThrow().get("id"));
+        long creditItem = number(missingBooks.stream().filter(i -> "CREDIT_NOTE".equals(i.get("docType"))).findFirst().orElseThrow().get("id"));
+        post(co + "/gstr2b/items/" + creditItem + "/draft-bill", Map.of(), owner, HttpStatus.BAD_REQUEST);
+        Map<String,Object> proposal = post(co + "/gstr2b/items/" + invoiceItem + "/draft-bill", Map.of(), owner, HttpStatus.OK);
+        assertThat((List<?>) proposal.get("blockers")).isEmpty();
+        assertThat(proposal.get("model")).isEqualTo("gstr2b-import");
+        post(co + "/gstr2b/items/" + invoiceItem + "/draft-bill", Map.of(), owner, HttpStatus.BAD_REQUEST);
+        Map<String,Object> accepted = post(co + "/ai/proposals/" + number(proposal.get("id")) + "/accept", Map.of(), owner, HttpStatus.OK);
+        assertThat(accepted.get("resultType")).isEqualTo("PURCHASE_BILL");
+
+        Map<String,Object> rerun = post(co + "/gstr2b/imports/" + importId + "/reconcile", Map.of(), owner, HttpStatus.OK);
+        assertThat(number(((Map<?,?>) rerun.get("counts")).get("MATCHED"))).isEqualTo(2);
+        assertThat(number(rerun.get("openExceptions"))).isEqualTo(1);
+        List<Map<String,Object>> followUps = owner.getForEntity(co + "/gstr2b/imports/" + importId + "/vendor-follow-ups", List.class).getBody();
+        assertThat(followUps).singleElement().satisfies(v -> assertThat(v.get("documentNumbers")).isEqualTo("V-002"));
+
+        Map<String,Object> email = post(co + "/gstr2b/imports/" + importId + "/vendor-follow-ups/" + vendorId + "/email", Map.of(), owner, HttpStatus.OK);
+        assertThat(email.get("generatedBy")).isEqualTo("template");
+        assertThat((String) email.get("body")).contains("V-002").contains("11800.00");
+
+        org.mockito.Mockito.when(llm.model()).thenReturn("test-model");
+        org.mockito.Mockito.when(llm.completeJson(org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString()))
+            .thenReturn(new com.fasterxml.jackson.databind.ObjectMapper().readTree("{\"subject\":\"Pending GST filing\",\"opening\":\"Please pay invoice 12345 now\",\"closing\":\"Many thanks.\"}"));
+        Map<String,Object> aiEmail = post(co + "/gstr2b/imports/" + importId + "/vendor-follow-ups/" + vendorId + "/email?ai=true", Map.of(), owner, HttpStatus.OK);
+        assertThat(aiEmail.get("subject")).isEqualTo("Pending GST filing");
+        assertThat((String) aiEmail.get("body")).contains("we could not find the documents below").contains("Many thanks.");
+    }
+
     private void approveAndPost(String co, long journalId, TestRestTemplate maker, TestRestTemplate checker) {
         post(co + "/journals/" + journalId + "/submit", Map.of(), maker, HttpStatus.OK);
         post(co + "/journals/" + journalId + "/approve", Map.of(), checker, HttpStatus.OK);

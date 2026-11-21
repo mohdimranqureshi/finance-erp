@@ -3,7 +3,7 @@ import { api, money } from './api';
 import { useToastFeed } from './toast';
 
 type Account = { id: number; code: string; name: string; accountType: string };
-type Item = { id: number; number: string; party: string; date: string; dueDate?: string | null; totalAmount: number; outstanding: number; daysOverdue: number; bucket: string };
+type Item = { id: number | null; documentType?: 'INVOICE' | 'BILL' | 'OPENING_BALANCE'; openingItemId?: number | null; number: string; party: string; date: string; dueDate?: string | null; totalAmount: number; outstanding: number; daysOverdue: number; bucket: string };
 type OpenItems = { receivables: Item[]; payables: Item[]; totalReceivable: number; totalPayable: number };
 type Invoice = { id: number; invoiceNumber?: string; customerName: string; status: string; irn?: string | null };
 type Suggestion = { paymentId: number; direction: string; paymentDate: string; amount: number };
@@ -43,7 +43,12 @@ export default function IndiaOps({ companyId, accounts, onLedgerChanged }: { com
   const settle = () => run(async () => {
     if (!sel) return;
     const body = { paymentDate: payDate, amount: Number(amount), tdsAmount: sel.kind === 'receipt' && tds ? Number(tds) : undefined, reference: payRef || undefined };
-    await post(`${base}/${sel.kind === 'receipt' ? `sales-invoices/${sel.item.id}/receipts` : `purchase-bills/${sel.item.id}/payments`}`, body);
+    const suffix = sel.kind === 'receipt' ? 'receipts' : 'payments';
+    // Opening-balance rows have no invoice/bill id; they are settled through the opening item itself.
+    const path = sel.item.documentType === 'OPENING_BALANCE'
+      ? `opening-balances/items/${sel.item.openingItemId}/${suffix}`
+      : `${sel.kind === 'receipt' ? 'sales-invoices' : 'purchase-bills'}/${sel.item.id}/${suffix}`;
+    await post(`${base}/${path}`, body);
     setSel(null); setAmount(''); setTds(''); setPayRef(''); await load(); await onLedgerChanged();
     setMessage('Recorded. A draft journal now needs independent approval before it reaches the ledger.');
   });
@@ -84,7 +89,7 @@ export default function IndiaOps({ companyId, accounts, onLedgerChanged }: { com
   });
 
   const table = (title: string, rows: Item[], kind: 'receipt' | 'payment') => <div className="tablewrap"><table><thead><tr><th>{title}</th><th>Party</th><th>Due</th><th>Ageing</th><th className="right">Outstanding</th><th>Action</th></tr></thead><tbody>
-    {rows.map(r => <tr key={r.id}><td className="mono">{r.number}</td><td>{r.party}</td><td>{r.dueDate || r.date}</td><td><span className="chip">{r.bucket}</span></td><td className="right">{money(r.outstanding)}</td>
+    {rows.map(r => <tr key={r.documentType === 'OPENING_BALANCE' ? `ob-${r.openingItemId}` : r.id}><td className="mono">{r.number}</td><td>{r.party}</td><td>{r.dueDate || r.date}</td><td><span className="chip">{r.bucket}</span></td><td className="right">{money(r.outstanding)}</td>
       <td><button className="small" disabled={busy} onClick={() => { setSel({ kind, item: r }); setAmount(String(r.outstanding)); }}>{kind === 'receipt' ? 'Record receipt' : 'Record payment'}</button></td></tr>)}
     {!rows.length && <tr><td colSpan={6} className="empty">Nothing outstanding.</td></tr>}</tbody></table></div>;
 

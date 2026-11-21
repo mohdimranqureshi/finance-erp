@@ -224,16 +224,26 @@ public class ReportController {
 				""", companyId, from, to);
 		outward = subtractHeads(outward, creditNotes);
 		itc = subtractHeads(itc, debitNotes);
-		BigDecimal c = ((BigDecimal) outward.get("cgst")).subtract((BigDecimal) itc.get("cgst"));
-		BigDecimal s = ((BigDecimal) outward.get("sgst")).subtract((BigDecimal) itc.get("sgst"));
-		BigDecimal i = ((BigDecimal) outward.get("igst")).subtract((BigDecimal) itc.get("igst"));
+		Map<String, Object> rcm = jdbc.queryForMap("""
+				SELECT COALESCE(SUM(b.taxable_amount),0) AS "taxableValue", COALESCE(SUM(b.cgst_amount),0) AS cgst,
+				       COALESCE(SUM(b.sgst_amount),0) AS sgst, COALESCE(SUM(b.igst_amount),0) AS igst
+				FROM purchase_bills b
+				JOIN journal_entries j ON j.company_id=b.company_id AND j.id=b.journal_entry_id AND j.status='POSTED'
+				LEFT JOIN journal_entries r ON r.company_id=j.company_id AND r.id=j.reversed_by_journal_id
+				WHERE b.company_id=? AND b.bill_date BETWEEN ? AND ? AND b.reverse_charge
+				  AND (r.id IS NULL OR r.status<>'POSTED')
+				""", companyId, from, to);
+		BigDecimal c = ((BigDecimal) outward.get("cgst")).add((BigDecimal) rcm.get("cgst")).subtract((BigDecimal) itc.get("cgst"));
+		BigDecimal s = ((BigDecimal) outward.get("sgst")).add((BigDecimal) rcm.get("sgst")).subtract((BigDecimal) itc.get("sgst"));
+		BigDecimal i = ((BigDecimal) outward.get("igst")).add((BigDecimal) rcm.get("igst")).subtract((BigDecimal) itc.get("igst"));
 		Map<String, Object> out = new LinkedHashMap<>();
 		out.put("from", from);
 		out.put("to", to);
 		out.put("outwardSupplies", outward);
+		out.put("reverseChargeLiability", rcm);
 		out.put("eligibleItc", itc);
 		out.put("netByHead", Map.of("cgst", c, "sgst", s, "igst", i, "total", c.add(s).add(i)));
-		out.put("note", "Indicative summary only. Cross-head ITC set-off, blocked credits, RCM, Rule 42/43 and return filing are not implemented.");
+		out.put("note", "Indicative summary only. See /gst/gstr3b for cross-head ITC set-off and the cash needed for reverse charge. Blocked credits, Rule 42/43 and return filing are not implemented.");
 		return out;
 	}
 

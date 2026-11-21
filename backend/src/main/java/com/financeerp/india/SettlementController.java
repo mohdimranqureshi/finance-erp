@@ -11,8 +11,12 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
+import java.util.function.Supplier;
 
-/** Receipts and payments against invoices/bills. Each creates a DRAFT journal for maker-checker approval. */
+/**
+ * Receipts and payments against invoices/bills and opening-balance party items. Each creates a DRAFT journal for
+ * maker-checker approval.
+ */
 @RestController
 @RequestMapping("/api/v1/companies/{companyId}")
 public class SettlementController {
@@ -53,21 +57,38 @@ public class SettlementController {
 			throw new IllegalArgumentException("Invoice not found.");
 		if (!"ISSUED".equals(rows.get(0).get("status")))
 			throw new IllegalArgumentException("Only issued invoices can receive payments.");
+		return recordReceipt(companyId, actor, req, () -> jdbc.queryForObject("SELECT " + INVOICE_OUTSTANDING
+				+ " FROM sales_invoices i WHERE i.company_id=? AND i.id=?", BigDecimal.class, companyId, invoiceId),
+				"Receipt for invoice #" + invoiceId, "sales_invoice_id", invoiceId, "invoice " + invoiceId);
+	}
+
+	/** Receipt against an opening receivable; same rules as an invoice receipt (TDS deducted by customer allowed). */
+	@PostMapping("/opening-balances/items/{itemId}/receipts")
+	@Transactional
+	public Map<String, Object> openingReceipt(@PathVariable long companyId, @PathVariable long itemId,
+			@Valid @RequestBody PaymentRequest req) {
+		long actor = access.requireRole(companyId, Set.of("OWNER", "ACCOUNTANT"));
+		String number = lockOpeningItem(companyId, itemId, "RECEIVABLE");
+		return recordReceipt(companyId, actor, req, () -> openingOutstanding(companyId, itemId),
+				"Receipt for opening receivable " + number + " (item #" + itemId + ")", "opening_item_id", itemId,
+				"opening item " + itemId);
+	}
+
+	private Map<String, Object> recordReceipt(long companyId, long actor, PaymentRequest req,
+			Supplier<BigDecimal> outstandingQuery, String ref, String documentColumn, long documentId, String auditDetail) {
 		BigDecimal tds = req.tdsAmount() == null ? BigDecimal.ZERO : req.tdsAmount();
 		gst.checkAmount(req.amount(), 13, "Amount");
 		gst.checkAmount(tds, 13, "TDS amount");
 		if (req.amount().signum() <= 0)
 			throw new IllegalArgumentException("Amount must be greater than zero.");
 		BigDecimal settled = req.amount().add(tds);
-		BigDecimal outstanding = jdbc.queryForObject("SELECT " + INVOICE_OUTSTANDING
-				+ " FROM sales_invoices i WHERE i.company_id=? AND i.id=?", BigDecimal.class, companyId, invoiceId);
+		BigDecimal outstanding = outstandingQuery.get();
 		if (settled.compareTo(outstanding) > 0)
 			throw new IllegalArgumentException("Receipt plus TDS (" + settled.toPlainString()
 					+ ") exceeds the outstanding balance (" + outstanding.toPlainString() + ").");
 		poster.requireOpenPeriod(companyId, req.paymentDate());
 		long bank = bankAccount(companyId, req.bankAccountId());
 		List<LedgerPoster.Line> lines = new ArrayList<>();
-		String ref = "Receipt for invoice #" + invoiceId;
 		lines.add(new LedgerPoster.Line(bank, ref, req.amount(), BigDecimal.ZERO));
 		if (tds.signum() > 0)
 			lines.add(new LedgerPoster.Line(poster.systemAccount(companyId, "TDS_RECEIVABLE"), ref + " TDS deducted by customer",
@@ -75,11 +96,13 @@ public class SettlementController {
 		lines.add(new LedgerPoster.Line(poster.systemAccount(companyId, "AR"), ref, BigDecimal.ZERO, settled));
 		long journalId = poster.createDraftJournal(companyId, req.paymentDate(), ref, "PMT:" + UUID.randomUUID(), actor,
 				lines);
+		// documentColumn is one of the fixed column names passed by this class, never user input.
 		Long id = jdbc.queryForObject(
-				"INSERT INTO payments(company_id,direction,payment_date,amount,tds_amount,bank_account_id,reference,sales_invoice_id,journal_entry_id,created_by_user_id) VALUES (?,'RECEIPT',?,?,?,?,?,?,?,?) RETURNING id",
-				Long.class, companyId, req.paymentDate(), req.amount(), tds, bank, req.reference(), invoiceId, journalId,
+				"INSERT INTO payments(company_id,direction,payment_date,amount,tds_amount,bank_account_id,reference,"
+						+ documentColumn + ",journal_entry_id,created_by_user_id) VALUES (?,'RECEIPT',?,?,?,?,?,?,?,?) RETURNING id",
+				Long.class, companyId, req.paymentDate(), req.amount(), tds, bank, req.reference(), documentId, journalId,
 				actor);
-		poster.audit(companyId, "RECEIPT_RECORDED", "PAYMENT", id, "invoice " + invoiceId);
+		poster.audit(companyId, "RECEIPT_RECORDED", "PAYMENT", id, auditDetail);
 		return payment(companyId, id);
 	}
 
@@ -96,25 +119,70 @@ public class SettlementController {
 			throw new IllegalArgumentException("Only booked bills can be paid.");
 		if (req.tdsAmount() != null && req.tdsAmount().signum() != 0)
 			throw new IllegalArgumentException("TDS on a bill is recorded when the bill is created; do not enter it on payment.");
+		return recordPayment(companyId, actor, req, () -> jdbc.queryForObject("SELECT " + BILL_OUTSTANDING
+				+ " FROM purchase_bills b WHERE b.company_id=? AND b.id=?", BigDecimal.class, companyId, billId),
+				"Payment for bill #" + billId, "purchase_bill_id", billId, "bill " + billId);
+	}
+
+	/** Payment against an opening payable; the carried-forward balance is already net of any TDS, as for bills. */
+	@PostMapping("/opening-balances/items/{itemId}/payments")
+	@Transactional
+	public Map<String, Object> openingPayment(@PathVariable long companyId, @PathVariable long itemId,
+			@Valid @RequestBody PaymentRequest req) {
+		long actor = access.requireRole(companyId, Set.of("OWNER", "ACCOUNTANT"));
+		String number = lockOpeningItem(companyId, itemId, "PAYABLE");
+		if (req.tdsAmount() != null && req.tdsAmount().signum() != 0)
+			throw new IllegalArgumentException(
+					"An opening payable is carried forward net of TDS; do not enter TDS on payment.");
+		return recordPayment(companyId, actor, req, () -> openingOutstanding(companyId, itemId),
+				"Payment for opening payable " + number + " (item #" + itemId + ")", "opening_item_id", itemId,
+				"opening item " + itemId);
+	}
+
+	private Map<String, Object> recordPayment(long companyId, long actor, PaymentRequest req,
+			Supplier<BigDecimal> outstandingQuery, String ref, String documentColumn, long documentId, String auditDetail) {
 		gst.checkAmount(req.amount(), 13, "Amount");
 		if (req.amount().signum() <= 0)
 			throw new IllegalArgumentException("Amount must be greater than zero.");
-		BigDecimal outstanding = jdbc.queryForObject("SELECT " + BILL_OUTSTANDING
-				+ " FROM purchase_bills b WHERE b.company_id=? AND b.id=?", BigDecimal.class, companyId, billId);
+		BigDecimal outstanding = outstandingQuery.get();
 		if (req.amount().compareTo(outstanding) > 0)
 			throw new IllegalArgumentException(
 					"Payment exceeds the outstanding balance (" + outstanding.toPlainString() + ").");
 		poster.requireOpenPeriod(companyId, req.paymentDate());
 		long bank = bankAccount(companyId, req.bankAccountId());
-		String ref = "Payment for bill #" + billId;
 		long journalId = poster.createDraftJournal(companyId, req.paymentDate(), ref, "PMT:" + UUID.randomUUID(), actor,
 				List.of(new LedgerPoster.Line(poster.systemAccount(companyId, "AP"), ref, req.amount(), BigDecimal.ZERO),
 						new LedgerPoster.Line(bank, ref, BigDecimal.ZERO, req.amount())));
+		// documentColumn is one of the fixed column names passed by this class, never user input.
 		Long id = jdbc.queryForObject(
-				"INSERT INTO payments(company_id,direction,payment_date,amount,tds_amount,bank_account_id,reference,purchase_bill_id,journal_entry_id,created_by_user_id) VALUES (?,'PAYMENT',?,?,0,?,?,?,?,?) RETURNING id",
-				Long.class, companyId, req.paymentDate(), req.amount(), bank, req.reference(), billId, journalId, actor);
-		poster.audit(companyId, "PAYMENT_RECORDED", "PAYMENT", id, "bill " + billId);
+				"INSERT INTO payments(company_id,direction,payment_date,amount,tds_amount,bank_account_id,reference,"
+						+ documentColumn + ",journal_entry_id,created_by_user_id) VALUES (?,'PAYMENT',?,?,0,?,?,?,?,?) RETURNING id",
+				Long.class, companyId, req.paymentDate(), req.amount(), bank, req.reference(), documentId, journalId, actor);
+		poster.audit(companyId, "PAYMENT_RECORDED", "PAYMENT", id, auditDetail);
 		return payment(companyId, id);
+	}
+
+	/** Locks a settleable opening item of the given type and returns its document number. */
+	private String lockOpeningItem(long companyId, long itemId, String type) {
+		List<Map<String, Object>> rows = jdbc.queryForList("SELECT o.item_type AS \"itemType\",o.document_number AS \"number\","
+				+ OpeningBalanceController.ITEM_SETTLEABLE + " AS settleable FROM " + OpeningBalanceController.ITEM_JOIN
+				+ " WHERE o.company_id=? AND o.id=? FOR UPDATE OF o", companyId, itemId);
+		if (rows.isEmpty())
+			throw new IllegalArgumentException("Opening balance item not found.");
+		Map<String, Object> row = rows.get(0);
+		if (!type.equals(row.get("itemType")))
+			throw new IllegalArgumentException("RECEIVABLE".equals(type)
+					? "Receipts can only be recorded against opening receivables."
+					: "Payments can only be recorded against opening payables.");
+		if (!Boolean.TRUE.equals(row.get("settleable")))
+			throw new IllegalArgumentException(
+					"This opening balance item belongs to a reversed or superseded opening batch and cannot be settled.");
+		return (String) row.get("number");
+	}
+
+	private BigDecimal openingOutstanding(long companyId, long itemId) {
+		return jdbc.queryForObject("SELECT " + OpeningBalanceController.ITEM_OUTSTANDING
+				+ " FROM opening_balance_items o WHERE o.company_id=? AND o.id=?", BigDecimal.class, companyId, itemId);
 	}
 
 	@GetMapping("/payments")
@@ -127,7 +195,8 @@ public class SettlementController {
 	private static final String PAYMENT_SELECT = """
 			SELECT p.id,p.direction,p.payment_date AS "paymentDate",p.amount,p.tds_amount AS "tdsAmount",
 			 p.bank_account_id AS "bankAccountId",p.reference,p.sales_invoice_id AS "salesInvoiceId",
-			 p.purchase_bill_id AS "purchaseBillId",p.journal_entry_id AS "journalEntryId",j.status AS "journalStatus"
+			 p.purchase_bill_id AS "purchaseBillId",p.opening_item_id AS "openingItemId",
+			 p.journal_entry_id AS "journalEntryId",j.status AS "journalStatus"
 			FROM payments p JOIN journal_entries j ON j.company_id=p.company_id AND j.id=p.journal_entry_id
 			""";
 
@@ -142,19 +211,32 @@ public class SettlementController {
 		return requested;
 	}
 
-	/** Open receivables and payables with ageing buckets as of today. */
+	/**
+	 * Open receivables and payables with ageing buckets as of today. Invoice/bill rows carry their document id;
+	 * opening-balance rows have documentType OPENING_BALANCE, a null id and openingItemId (settle them through
+	 * /opening-balances/items/{openingItemId}/receipts or /payments).
+	 */
 	@GetMapping("/open-items")
 	public Map<String, Object> openItems(@PathVariable long companyId) {
 		access.requireMembership(companyId);
 		LocalDate today = LocalDate.now();
 		List<Map<String, Object>> receivables = aged(jdbc.queryForList("SELECT i.id,i.invoice_number AS \"number\",p.name AS party,i.invoice_date AS \"date\",i.due_date AS \"dueDate\",i.total_amount AS \"totalAmount\","
-				+ INVOICE_OUTSTANDING + " AS outstanding FROM sales_invoices i JOIN parties p ON p.company_id=i.company_id AND p.id=i.customer_id WHERE i.company_id=? AND i.status='ISSUED' ORDER BY i.invoice_date",
-				companyId), today);
+				+ INVOICE_OUTSTANDING + " AS outstanding,'INVOICE' AS \"documentType\",NULL::bigint AS \"openingItemId\" FROM sales_invoices i JOIN parties p ON p.company_id=i.company_id AND p.id=i.customer_id WHERE i.company_id=? AND i.status='ISSUED'"
+				+ " UNION ALL " + openingItems("RECEIVABLE") + " ORDER BY 4,8,1,9",
+				companyId, companyId), today);
 		List<Map<String, Object>> payables = aged(jdbc.queryForList("SELECT b.id,b.vendor_invoice_number AS \"number\",p.name AS party,b.bill_date AS \"date\",b.due_date AS \"dueDate\",b.total_amount AS \"totalAmount\","
-				+ BILL_OUTSTANDING + " AS outstanding FROM purchase_bills b JOIN parties p ON p.company_id=b.company_id AND p.id=b.vendor_id WHERE b.company_id=? AND b.status='BOOKED' ORDER BY b.bill_date",
-				companyId), today);
+				+ BILL_OUTSTANDING + " AS outstanding,'BILL' AS \"documentType\",NULL::bigint AS \"openingItemId\" FROM purchase_bills b JOIN parties p ON p.company_id=b.company_id AND p.id=b.vendor_id WHERE b.company_id=? AND b.status='BOOKED'"
+				+ " UNION ALL " + openingItems("PAYABLE") + " ORDER BY 4,8,1,9",
+				companyId, companyId), today);
 		return Map.of("receivables", receivables, "payables", payables, "totalReceivable", total(receivables),
 				"totalPayable", total(payables));
+	}
+
+	private static String openingItems(String type) {
+		return "SELECT NULL::bigint,o.document_number,p.name,o.document_date,o.due_date,o.amount," + OpeningBalanceController.ITEM_OUTSTANDING
+				+ ",'OPENING_BALANCE',o.id FROM " + OpeningBalanceController.ITEM_JOIN
+				+ " JOIN parties p ON p.company_id=o.company_id AND p.id=o.party_id WHERE o.company_id=? AND o.item_type='" + type
+				+ "' AND " + OpeningBalanceController.ITEM_SETTLEABLE;
 	}
 
 	private static BigDecimal total(List<Map<String, Object>> rows) {

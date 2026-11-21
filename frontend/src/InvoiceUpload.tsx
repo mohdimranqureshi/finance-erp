@@ -32,7 +32,7 @@ export default function InvoiceUpload({ companyId, kind, parties, busy, run, onC
   function close() { setOpen(false); setProposal(null); setFile(null); setFix({}); }
 
   const upload = () => run(async () => {
-    if (!file) throw new Error('Choose a PDF, TXT or CSV file first.');
+    if (!file) throw new Error('Choose a PDF, image, TXT or CSV file first.');
     const form = new FormData();
     form.append('file', file);
     setProposal(await apiUpload<Proposal>(`${base}/ai/${sale ? 'extract-invoice-file' : 'extract-bill-file'}`, form));
@@ -66,7 +66,7 @@ export default function InvoiceUpload({ companyId, kind, parties, busy, run, onC
     </div>
     {!proposal && <>
       <form className="accountform" onSubmit={e => { e.preventDefault(); upload(); }}>
-        <label>File<input type="file" accept=".pdf,.txt,.csv" onChange={e => setFile(e.target.files?.[0] ?? null)} /></label>
+        <label>File<input type="file" accept=".pdf,.txt,.csv,.png,.jpg,.jpeg" onChange={e => setFile(e.target.files?.[0] ?? null)} /></label>
         <button disabled={busy || !file || !enabled}><Upload size={15} />{busy ? 'Extracting…' : 'Extract details'}</button>
       </form>
       {!enabled && <p className="hint">Upload needs the AI provider to be configured. You can still enter the {sale ? 'invoice' : 'bill'} manually in the form.</p>}

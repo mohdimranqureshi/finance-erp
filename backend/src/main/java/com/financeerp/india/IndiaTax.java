@@ -40,6 +40,28 @@ public final class IndiaTax {
 			Map.of("section", "194J", "description", "Professional or technical fees", "indicativeRate", 10),
 			Map.of("section", "194A", "description", "Interest other than securities", "indicativeRate", 10));
 
+	/**
+	 * Indicative income-tax TCS (section 206C) codes; section 206C(1H) was omitted from 1 April 2025. Higher rates apply
+	 * when the buyer has no PAN (section 206CC). Always verify before collecting.
+	 */
+	public static final List<Map<String, Object>> TCS_SECTIONS = List.of(
+			Map.of("section", "1-LIQUOR", "description", "206C(1) Alcoholic liquor for human consumption", "indicativeRate", 1),
+			Map.of("section", "1-TENDU", "description", "206C(1) Tendu leaves", "indicativeRate", 5),
+			Map.of("section", "1-TIMBER", "description", "206C(1) Timber", "indicativeRate", 2.5),
+			Map.of("section", "1-FOREST", "description", "206C(1) Other forest produce", "indicativeRate", 2.5),
+			Map.of("section", "1-SCRAP", "description", "206C(1) Scrap", "indicativeRate", 1),
+			Map.of("section", "1-MINERAL", "description", "206C(1) Minerals: coal, lignite, iron ore", "indicativeRate", 1),
+			Map.of("section", "1F-MOTOR", "description", "206C(1F) Motor vehicle or notified goods above Rs 10 lakh", "indicativeRate", 1));
+
+	public static boolean isTcsSection(String section) {
+		return section != null && TCS_SECTIONS.stream().anyMatch(s -> s.get("section").equals(section));
+	}
+
+	/** TCS is collected on the amount receivable including GST, in whole rupees. */
+	public static BigDecimal tcs(BigDecimal amountIncludingGst, BigDecimal rate) {
+		return amountIncludingGst.multiply(rate).divide(HUNDRED, 0, RoundingMode.HALF_UP).setScale(2);
+	}
+
 	private IndiaTax() {
 	}
 

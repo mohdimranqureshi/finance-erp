@@ -2,6 +2,7 @@ package com.financeerp.ai;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -13,7 +14,9 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayDeque;
+import java.util.Base64;
 import java.util.Deque;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -28,6 +31,8 @@ public class LlmClient {
 	private final int timeoutSeconds;
 	private final int maxInputChars;
 	private final int callsPerMinute;
+	private final boolean visionEnabled;
+	private final String visionModel;
 	private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
 	private final Map<Long, Deque<Instant>> recentCalls = new ConcurrentHashMap<>();
 
@@ -36,8 +41,12 @@ public class LlmClient {
 			@Value("${app.ai.api-key:}") String apiKey, @Value("${app.ai.model:gpt-4o-mini}") String model,
 			@Value("${app.ai.timeout-seconds:45}") int timeoutSeconds,
 			@Value("${app.ai.max-input-chars:20000}") int maxInputChars,
-			@Value("${app.ai.calls-per-minute:20}") int callsPerMinute) {
+			@Value("${app.ai.calls-per-minute:20}") int callsPerMinute,
+			@Value("${app.ai.vision-enabled:${AI_VISION_ENABLED:false}}") boolean visionEnabled,
+			@Value("${app.ai.vision-model:${AI_VISION_MODEL:}}") String visionModel) {
 		this.mapper = mapper;
+		this.visionEnabled = visionEnabled;
+		this.visionModel = visionModel == null || visionModel.isBlank() ? model : visionModel.trim();
 		this.enabled = enabled;
 		this.apiKey = apiKey;
 		this.model = model;
@@ -64,19 +73,55 @@ public class LlmClient {
 		return maxInputChars;
 	}
 
+	/** Model used for image (vision) requests; defaults to the text model. */
+	public String visionModel() {
+		return visionModel;
+	}
+
 	/** Sends a system and user prompt and returns the model's JSON object reply. */
 	public JsonNode completeJson(long companyId, String system, String user) {
 		if (!enabled)
 			throw new AiUnavailableException(
 					"AI is not enabled. Set app.ai.enabled=true and configure the provider (see README).");
 		throttle(companyId);
+		ObjectNode body = request(model, system);
+		((ArrayNode) body.get("messages")).addObject().put("role", "user").put("content", user);
+		return send(body);
+	}
+
+	/**
+	 * Sends a system prompt plus a user message made of text and PNG page images (OpenAI-compatible content parts) and
+	 * returns the model's JSON object reply. Images are sent as base64 data URLs and never logged.
+	 */
+	public JsonNode completeJsonWithImages(long companyId, String system, String userText, List<byte[]> pngImages) {
+		if (!enabled)
+			throw new AiUnavailableException(
+					"AI is not enabled. Set app.ai.enabled=true and configure the provider (see README).");
+		if (!visionEnabled)
+			throw new AiUnavailableException(
+					"Image extraction is not enabled. Set app.ai.vision-enabled=true (AI_VISION_ENABLED) with a vision-capable model.");
+		if (pngImages == null || pngImages.isEmpty())
+			throw new IllegalArgumentException("No images to send.");
+		throttle(companyId);
+		ObjectNode body = request(visionModel, system);
+		ArrayNode content = ((ArrayNode) body.get("messages")).addObject().put("role", "user").putArray("content");
+		content.addObject().put("type", "text").put("text", userText);
+		for (byte[] png : pngImages)
+			content.addObject().put("type", "image_url").putObject("image_url")
+					.put("url", "data:image/png;base64," + Base64.getEncoder().encodeToString(png)).put("detail", "high");
+		return send(body);
+	}
+
+	private ObjectNode request(String modelName, String system) {
 		ObjectNode body = mapper.createObjectNode();
-		body.put("model", model);
+		body.put("model", modelName);
 		body.put("temperature", 0);
 		body.putObject("response_format").put("type", "json_object");
-		var messages = body.putArray("messages");
-		messages.addObject().put("role", "system").put("content", system);
-		messages.addObject().put("role", "user").put("content", user);
+		body.putArray("messages").addObject().put("role", "system").put("content", system);
+		return body;
+	}
+
+	private JsonNode send(ObjectNode body) {
 		try {
 			HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(endpoint))
 					.timeout(Duration.ofSeconds(timeoutSeconds)).header("Content-Type", "application/json")

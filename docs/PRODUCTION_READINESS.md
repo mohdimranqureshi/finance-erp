@@ -13,19 +13,21 @@ This repository is a pre-production release candidate. It is not a certified acc
 - One-time bootstrap identity support using `BOOTSTRAP_ADMIN_*` environment variables; it does not overwrite an existing account.
 - Company invitation flow with 256-bit random one-time token, SHA-256 token storage, 48-hour expiry, and password creation on acceptance; token delivery is manual over a trusted channel.
 - CI workflow, database backup script and non-destructive restore-test script.
+- Session-based browser authentication with CSRF protection (cookie token plus `X-XSRF-TOKEN`), session-fixation protection, 30-minute idle and 12-hour absolute timeouts, and per-request revocation when an account is disabled or its MFA changes.
+- TOTP MFA (RFC 6238) with AES-256-GCM encrypted secrets, replay protection and 10 single-use hashed recovery codes; admin disable, enable and MFA reset; LOGIN_*, LOGOUT, MFA_* and USER_* audit events.
 - Production profile requires explicit database credentials and disables public registration by default.
 
 ## Required before accepting real financial records
 
 - [ ] Run `mvn clean verify` on a machine with JDK 17+, Maven 3.9+ and Docker; save the test report as release evidence.
-- [ ] Complete a professional security review of HTTP Basic authentication, browser credential handling, brute-force protection, MFA, account recovery, session/logout policy and CSRF/CORS posture. Do not expose the app publicly until this is complete.
+- [ ] Complete a professional security review of session authentication, CSRF posture, MFA enrolment and recovery, and lockout. Sessions are held in memory: run a single instance or add Spring Session. Set `MFA_ENCRYPTION_KEY` from a secret manager (startup fails without it in `prod`), keep `app.security.basic-auth-enabled=false`, and require MFA for administrators by policy. Do not expose the app publicly until this is complete.
 - [ ] Deploy behind HTTPS/TLS with trusted-proxy configuration, security headers, strict network controls and no public PostgreSQL port.
 - [ ] Use separate least-privilege runtime and migration DB roles; the runtime role should not own the schema or have permission to disable triggers.
 - [ ] Store DB/bootstrap secrets in a secret manager. Set `BOOTSTRAP_ADMIN_EMAIL` and a unique `BOOTSTRAP_ADMIN_PASSWORD` (16–72 characters) for the first startup only, then remove both from the environment and rotate any deployment secrets. Existing users are never reset by this bootstrap runner.
-- [ ] Configure a trusted invitation-delivery channel; invitation tokens are currently returned once to the owner for manual secure delivery. Add MFA, rate limiting, account disable/revocation and security event alerting.
+- [ ] Configure a trusted invitation-delivery channel; invitation tokens are currently returned once to the owner for manual secure delivery. Add IP-based rate limiting and security event alerting.
 - [ ] Configure encrypted off-host backups, retention, monitoring, and scheduled restore drills. The included restore script only demonstrates restoring to a separate local test database.
 - [ ] Add centralized tamper-resistant audit export/retention, observability, alerting, vulnerability/dependency/container scanning, SBOM and incident-response procedures.
-- [ ] Have an Indian CA/accounting-domain expert validate the chart of accounts, GST, TDS/TCS, e-invoicing, e-way bill, credit/debit notes, bank reconciliation, inventory integration, rounding, FX, financial year close, audit exports and applicable statutory reporting. These features are not implemented by this foundation.
+- [ ] Have an Indian CA/accounting-domain expert validate the chart of accounts, GST, TDS/TCS, e-invoicing, e-way bill, credit/debit notes, bank reconciliation, rounding, FX, financial year close, audit exports and applicable statutory reporting. These features are not implemented by this foundation.
 - [ ] Complete performance/load tests, concurrency tests, migration-upgrade tests, disaster recovery, access-control matrix tests and a penetration test.
 
 ## Local release verification

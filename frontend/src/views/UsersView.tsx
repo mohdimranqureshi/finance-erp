@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Plus, Trash2, UserCheck, UserX } from 'lucide-react';
+import { KeyRound, Plus, Trash2, UserCheck, UserX } from 'lucide-react';
 import { api } from '../api';
 import { Panel, Table } from '../ui';
 import type { Shell } from '../types';
 
 type User = {
   id: number; email: string; displayName: string;
-  active: boolean; admin: boolean; createdAt: string; companyCount: number;
+  active: boolean; admin: boolean; mfaEnabled: boolean; createdAt: string; companyCount: number;
 };
 
 export default function UsersView({ shell, currentEmail }: { shell: Shell; currentEmail: string }) {
@@ -32,11 +32,18 @@ export default function UsersView({ shell, currentEmail }: { shell: Shell; curre
   };
 
   const setActive = (user: User, active: boolean) => shell.run(async () => {
-    await api(`/api/v1/admin/users/${user.id}/status`, { method: 'PUT', body: JSON.stringify({ active }) });
+    await api(`/api/v1/admin/users/${user.id}/${active ? 'enable' : 'disable'}`, { method: 'POST' });
     await loadUsers();
     shell.notify(active
       ? `${user.email} can sign in again.`
-      : `${user.email} is deactivated and can no longer sign in. Their accounting history is unchanged.`);
+      : `${user.email} is deactivated, signed out everywhere and can no longer sign in. Their accounting history is unchanged.`);
+  });
+
+  const resetMfa = (user: User) => shell.run(async () => {
+    if (!window.confirm(`Reset two-factor authentication for ${user.email}? Their authenticator and recovery codes stop working and they are signed out everywhere. Verify their identity first.`)) return;
+    await api(`/api/v1/admin/users/${user.id}/mfa/reset`, { method: 'POST' });
+    await loadUsers();
+    shell.notify(`Two-factor authentication was reset for ${user.email}. They can sign in with their password and set it up again.`);
   });
 
   const remove = (user: User) => shell.run(async () => {
@@ -70,8 +77,8 @@ export default function UsersView({ shell, currentEmail }: { shell: Shell; curre
       title="Accounts"
       description="Deactivating blocks sign-in but keeps every journal, invoice and approval intact. Deleting is only possible for an account that has never touched the ledger."
       aside={<span className="count">{users.length} accounts</span>}>
-      <Table columns={6} isEmpty={!users.length} empty="No accounts yet."
-        head={<tr><th>User</th><th>Email</th><th>Role</th><th className="right">Companies</th><th>Status</th><th>Action</th></tr>}>
+      <Table columns={7} isEmpty={!users.length} empty="No accounts yet."
+        head={<tr><th>User</th><th>Email</th><th>Role</th><th className="right">Companies</th><th>Two-factor</th><th>Status</th><th>Action</th></tr>}>
         {users.map(user => {
           const isSelf = user.email.toLowerCase() === currentEmail.toLowerCase();
           return <tr key={user.id}>
@@ -79,6 +86,7 @@ export default function UsersView({ shell, currentEmail }: { shell: Shell; curre
             <td className="mono">{user.email}</td>
             <td><span className="chip">{user.admin ? 'Administrator' : 'User'}</span></td>
             <td className="right">{user.companyCount}</td>
+            <td><span className="chip">{user.mfaEnabled ? 'On' : 'Off'}</span></td>
             <td><span className={user.active ? 'posted' : 'draft'}>{user.active ? 'Active' : 'Deactivated'}</span></td>
             <td>{isSelf ? <span className="muted">This is you</span> : <span className="inline">
               {user.active
@@ -86,6 +94,8 @@ export default function UsersView({ shell, currentEmail }: { shell: Shell; curre
                   <UserX size={13} />Deactivate</button>
                 : <button className="small secondary" disabled={shell.busy} onClick={() => setActive(user, true)}>
                   <UserCheck size={13} />Activate</button>}
+              {user.mfaEnabled && <button className="small secondary" disabled={shell.busy} onClick={() => resetMfa(user)}>
+                <KeyRound size={13} />Reset 2FA</button>}
               <button className="small danger" disabled={shell.busy} onClick={() => remove(user)}>
                 <Trash2 size={13} />Delete</button>
             </span>}</td>

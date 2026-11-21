@@ -47,7 +47,7 @@ public class EInvoiceController {
 
 	private Source load(long companyId, long invoiceId) {
 		List<Map<String, Object>> inv = jdbc.queryForList(
-				"SELECT id,invoice_number AS num,invoice_date AS dt,place_of_supply AS pos,supply_type AS supply,total_amount AS total,taxable_amount AS taxable,cgst_amount AS cgst,sgst_amount AS sgst,igst_amount AS igst,customer_id AS customer,status,irn FROM sales_invoices WHERE company_id=? AND id=?",
+				"SELECT id,invoice_number AS num,invoice_date AS dt,place_of_supply AS pos,supply_type AS supply,total_amount AS total,tcs_amount AS tcs,taxable_amount AS taxable,cgst_amount AS cgst,sgst_amount AS sgst,igst_amount AS igst,customer_id AS customer,status,irn FROM sales_invoices WHERE company_id=? AND id=?",
 				companyId, invoiceId);
 		if (inv.isEmpty())
 			throw new IllegalArgumentException("Invoice not found.");
@@ -111,8 +111,9 @@ public class EInvoiceController {
 			items.add(it);
 		}
 		out.put("ItemList", items);
+		// Income-tax TCS is not part of the GST value; the IRP schema carries it as other charges.
 		out.put("ValDtls", Map.of("AssVal", inv.get("taxable"), "CgstVal", inv.get("cgst"), "SgstVal", inv.get("sgst"),
-				"IgstVal", inv.get("igst"), "TotInvVal", inv.get("total")));
+				"IgstVal", inv.get("igst"), "OthChrg", inv.get("tcs"), "TotInvVal", inv.get("total")));
 		out.put("irn", inv.get("irn"));
 		out.put("note", "Payload only. Submit via the Invoice Registration Portal or a GSP, then record the IRN. Applicability depends on aggregate turnover and is not checked here.");
 		return out;

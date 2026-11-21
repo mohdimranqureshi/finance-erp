@@ -17,10 +17,12 @@ import java.util.Map;
 public class AdminUserController {
 	private final JdbcTemplate jdbc;
 	private final CompanyAccess access;
+	private final MfaService mfa;
 
-	public AdminUserController(JdbcTemplate jdbc, CompanyAccess access) {
+	public AdminUserController(JdbcTemplate jdbc, CompanyAccess access, MfaService mfa) {
 		this.jdbc = jdbc;
 		this.access = access;
+		this.mfa = mfa;
 	}
 
 	public record StatusRequest(@NotNull Boolean active) {
@@ -46,7 +48,7 @@ public class AdminUserController {
 	@GetMapping
 	public List<Map<String, Object>> list() {
 		return jdbc.queryForList(
-				"SELECT u.id,u.email,u.display_name AS \"displayName\",u.active,u.is_admin AS \"admin\",u.created_at AS \"createdAt\","
+				"SELECT u.id,u.email,u.display_name AS \"displayName\",u.active,u.is_admin AS \"admin\",u.mfa_enabled AS \"mfaEnabled\",u.created_at AS \"createdAt\","
 						+ "(SELECT count(*) FROM company_memberships m WHERE m.user_id=u.id) AS \"companyCount\" "
 						+ "FROM app_users u ORDER BY u.id");
 	}
@@ -54,14 +56,43 @@ public class AdminUserController {
 	@PutMapping("/{userId}/status")
 	@Transactional
 	public Map<String, Object> setStatus(@PathVariable long userId, @Valid @RequestBody StatusRequest request) {
+		return changeStatus(userId, Boolean.TRUE.equals(request.active()));
+	}
+
+	@PostMapping("/{userId}/disable")
+	@Transactional
+	public Map<String, Object> disable(@PathVariable long userId) {
+		return changeStatus(userId, false);
+	}
+
+	@PostMapping("/{userId}/enable")
+	@Transactional
+	public Map<String, Object> enable(@PathVariable long userId) {
+		return changeStatus(userId, true);
+	}
+
+	/** For a lost authenticator: removes TOTP and recovery codes and signs the user out everywhere. */
+	@PostMapping("/{userId}/mfa/reset")
+	@Transactional
+	public Map<String, Object> resetMfa(@PathVariable long userId) {
 		Map<String, Object> user = load(userId);
-		boolean active = Boolean.TRUE.equals(request.active());
+		if (userId == access.currentUserId())
+			throw new IllegalArgumentException(
+					"You cannot reset your own two-factor authentication. Use your security settings instead.");
+		mfa.reset(userId);
+		audit("MFA_RESET", userId, String.valueOf(user.get("email")));
+		return load(userId);
+	}
+
+	/** Disabling also bumps session_version, so the user's open browser sessions stop working immediately. */
+	private Map<String, Object> changeStatus(long userId, boolean active) {
+		Map<String, Object> user = load(userId);
 		if (userId == access.currentUserId())
 			throw new IllegalArgumentException("You cannot change your own account status.");
 		if (!active)
 			requireAnotherAdminRemains(user);
-		jdbc.update("UPDATE app_users SET active=? WHERE id=?", active, userId);
-		audit(active ? "USER_REACTIVATED" : "USER_DEACTIVATED", userId, String.valueOf(user.get("email")));
+		jdbc.update("UPDATE app_users SET active=?,session_version=session_version+1 WHERE id=?", active, userId);
+		audit(active ? "USER_ENABLED" : "USER_DISABLED", userId, String.valueOf(user.get("email")));
 		return load(userId);
 	}
 
@@ -92,7 +123,7 @@ public class AdminUserController {
 	private Map<String, Object> load(long userId) {
 		try {
 			return jdbc.queryForMap(
-					"SELECT id,email,display_name AS \"displayName\",active,is_admin AS \"admin\",created_at AS \"createdAt\" FROM app_users WHERE id=?",
+					"SELECT id,email,display_name AS \"displayName\",active,is_admin AS \"admin\",mfa_enabled AS \"mfaEnabled\",created_at AS \"createdAt\" FROM app_users WHERE id=?",
 					userId);
 		} catch (EmptyResultDataAccessException ex) {
 			throw new IllegalArgumentException("User not found.");
