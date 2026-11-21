@@ -1,4 +1,4 @@
-import { ArrowLeftRight, BarChart3, BookOpen, Bot, Briefcase, Building2, FileCheck2, FileText, KeyRound, LayoutDashboard, LogOut, ShieldCheck, Users } from 'lucide-react';
+import { ArrowLeftRight, BarChart3, BookOpen, Bot, Briefcase, Building2, Calculator, FileCheck2, FileText, Hammer, KeyRound, LayoutDashboard, LogOut, Scale, ShieldCheck, Users } from 'lucide-react';
 import type { View } from '../types';
 
 const LINKS: { id: View; label: string; icon: typeof BookOpen; adminOnly?: boolean }[] = [
@@ -9,7 +9,10 @@ const LINKS: { id: View; label: string; icon: typeof BookOpen; adminOnly?: boole
   { id: 'journals', label: 'Journals & ledger', icon: FileText },
   { id: 'reports', label: 'Reports', icon: BarChart3 },
   { id: 'gstr2b', label: 'GSTR-2B ITC', icon: FileCheck2 },
+  { id: 'returns', label: 'GSTR-3B & TDS', icon: Calculator },
   { id: 'tally', label: 'Tally import/export', icon: ArrowLeftRight },
+  { id: 'opening', label: 'Opening balances', icon: Scale },
+  { id: 'assets', label: 'Fixed assets', icon: Hammer },
   { id: 'ai', label: 'AI assistant', icon: Bot },
   { id: 'security', label: 'Security', icon: KeyRound },
 ];

@@ -13,13 +13,16 @@ import UsersView from './views/UsersView';
 import ClientsView from './views/ClientsView';
 import Gstr2bView from './views/Gstr2bView';
 import TallyView from './views/TallyView';
+import ReturnsView from './views/ReturnsView';
+import OpeningBalancesView from './views/OpeningBalancesView';
+import FixedAssetsView from './views/FixedAssetsView';
 import SecurityView from './views/SecurityView';
 import JournalsView from './views/JournalsView';
 import ReportsView from './views/ReportsView';
 import AiWorkspace from './AiWorkspace';
 import type {Account,Company,Journal,Shell,TrialRow,View} from './types';
 const IDLE_MS=15*60*1000;
-const PAGES:Record<View,{title:string;subtitle:string}>={overview:{title:'Overview',subtitle:'Accounting you can inspect, verify, and trust.'},clients:{title:'Clients',subtitle:'Every client you work for: close status and the approvals waiting on you.'},gstr2b:{title:'GSTR-2B ITC',subtitle:'Reconcile your purchases with GSTR-2B and see input tax credit at risk.'},tally:{title:'Tally import and export',subtitle:'Bring a TallyPrime day book in as draft journals, or send posted journals back.'},company:{title:'Company & accounts',subtitle:'Manage your team and chart of accounts.'},users:{title:'Users',subtitle:'Application accounts and administrator access.'},security:{title:'Security',subtitle:'Two-factor authentication for your account.'},journals:{title:'Journals & ledger',subtitle:'Create, approve and post journals, and check the trial balance.'},reports:{title:'Reports',subtitle:'Run the ledger, profit and loss, and trial balance for any period you choose.'},ai:{title:'AI assistant',subtitle:'Ask questions, draft entries and review the close. AI proposes, people approve.'}};
+const PAGES:Record<View,{title:string;subtitle:string}>={overview:{title:'Overview',subtitle:'Accounting you can inspect, verify, and trust.'},clients:{title:'Clients',subtitle:'Every client you work for: close status and the approvals waiting on you.'},gstr2b:{title:'GSTR-2B ITC',subtitle:'Reconcile your purchases with GSTR-2B and see input tax credit at risk.'},tally:{title:'Tally import and export',subtitle:'Bring a TallyPrime day book in as draft journals, or send posted journals back.'},returns:{title:'GSTR-3B and TDS',subtitle:'Review the monthly GST return and record TDS deposits for the quarterly return.'},opening:{title:'Opening balances',subtitle:'Carry your balances forward from the day you start.'},assets:{title:'Fixed assets',subtitle:'Register assets, charge depreciation and record disposals as draft journals.'},company:{title:'Company & accounts',subtitle:'Manage your team and chart of accounts.'},users:{title:'Users',subtitle:'Application accounts and administrator access.'},security:{title:'Security',subtitle:'Two-factor authentication for your account.'},journals:{title:'Journals & ledger',subtitle:'Create, approve and post journals, and check the trial balance.'},reports:{title:'Reports',subtitle:'Run the ledger, profit and loss, and trial balance for any period you choose.'},ai:{title:'AI assistant',subtitle:'Ask questions, draft entries and review the close. AI proposes, people approve.'}};
 export default function App(){
  const [email,setEmail]=useState('');
  const [password,setPassword]=useState('');
@@ -161,6 +164,12 @@ export default function App(){
    {view==='gstr2b'&&<Gstr2bView companyId={companyId} shell={shell}/>}
 
    {view==='tally'&&<TallyView companyId={companyId} shell={shell}/>}
+
+   {view==='returns'&&<ReturnsView companyId={companyId} accounts={accounts} shell={shell}/>}
+
+   {view==='opening'&&<OpeningBalancesView companyId={companyId} accounts={accounts} shell={shell}/>}
+
+   {view==='assets'&&<FixedAssetsView companyId={companyId} accounts={accounts} shell={shell}/>}
 
    {view==='ai'&&(companyId!==''
     ? <AiWorkspace companyId={Number(companyId)} onChanged={reload}/>

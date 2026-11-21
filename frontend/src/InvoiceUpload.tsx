@@ -17,10 +17,10 @@ export default function InvoiceUpload({ companyId, kind, parties, busy, run, onC
   const base = `/api/v1/companies/${companyId}`;
   const sale = kind === 'sale';
   const title = sale ? 'Upload GST sales invoice' : 'Upload purchase bill';
-  const [open, setOpen] = useState(false), [enabled, setEnabled] = useState(false), [file, setFile] = useState<File | null>(null);
+  const [open, setOpen] = useState(false), [enabled, setEnabled] = useState(false), [vision, setVision] = useState(false), [file, setFile] = useState<File | null>(null);
   const [proposal, setProposal] = useState<Proposal | null>(null), [fix, setFix] = useState<Fix>({});
 
-  useEffect(() => { api<{ enabled: boolean }>('/api/v1/ai/status').then(s => setEnabled(s.enabled)).catch(() => undefined); }, []);
+  useEffect(() => { api<{ enabled: boolean; visionEnabled?: boolean }>('/api/v1/ai/status').then(s => { setEnabled(s.enabled); setVision(!!s.visionEnabled); }).catch(() => undefined); }, []);
   useEffect(() => { close(); }, [companyId]);
   useEffect(() => {
     if (!open) return;
@@ -32,7 +32,7 @@ export default function InvoiceUpload({ companyId, kind, parties, busy, run, onC
   function close() { setOpen(false); setProposal(null); setFile(null); setFix({}); }
 
   const upload = () => run(async () => {
-    if (!file) throw new Error('Choose a PDF, image, TXT or CSV file first.');
+    if (!file) throw new Error(vision ? 'Choose a PDF, PNG, JPEG, TXT or CSV file first.' : 'Choose a PDF, TXT or CSV file first.');
     const form = new FormData();
     form.append('file', file);
     setProposal(await apiUpload<Proposal>(`${base}/ai/${sale ? 'extract-invoice-file' : 'extract-bill-file'}`, form));
@@ -61,12 +61,12 @@ export default function InvoiceUpload({ companyId, kind, parties, busy, run, onC
     {open && <div style={backdrop} onMouseDown={e => { if (e.target === e.currentTarget && !busy) close(); }}>
       <div style={dialog} role="dialog" aria-modal="true" aria-label={title}>
     <div className="panelhead">
-      <div><h2><Upload size={16} /> {title}</h2><p>PDF with selectable text, TXT or CSV, up to 1 MB. Nothing is posted until you create the draft and a different person approves it.</p></div>
+      <div><h2><Upload size={16} /> {title}</h2><p>{vision ? 'PDF (scanned or text), PNG or JPEG photos, TXT or CSV, up to 5 MB. Images are sent to your AI provider as cleaned PNG pages, and the result must be checked against the original.' : 'PDF with selectable text, TXT or CSV, up to 1 MB. Photos and scanned PDFs need image reading to be enabled by your administrator.'} Nothing is posted until you create the draft and a different person approves it.</p></div>
       <button type="button" className="small secondary" aria-label="Close" disabled={busy} onClick={close}><X size={14} /></button>
     </div>
     {!proposal && <>
       <form className="accountform" onSubmit={e => { e.preventDefault(); upload(); }}>
-        <label>File<input type="file" accept=".pdf,.txt,.csv,.png,.jpg,.jpeg" onChange={e => setFile(e.target.files?.[0] ?? null)} /></label>
+        <label>File<input type="file" accept={vision ? '.pdf,.txt,.csv,.png,.jpg,.jpeg' : '.pdf,.txt,.csv'} onChange={e => setFile(e.target.files?.[0] ?? null)} /></label>
         <button disabled={busy || !file || !enabled}><Upload size={15} />{busy ? 'Extracting…' : 'Extract details'}</button>
       </form>
       {!enabled && <p className="hint">Upload needs the AI provider to be configured. You can still enter the {sale ? 'invoice' : 'bill'} manually in the form.</p>}

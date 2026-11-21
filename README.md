@@ -180,6 +180,21 @@ Set `AI_VISION_ENABLED=true` (and `AI_VISION_MODEL` if your text model cannot re
 - `GET /api/v1/workspace/clients[?search&status&sort]` lists every company you are a member of with draft, submitted and approvable journals, unmatched bank lines, the latest GSTR-2B import, overdue receivables and open old periods, plus a `closeStatus` (`CLEAN`, `ATTENTION` or `BLOCKED`) with reasons. `PUT .../workspace/clients/{companyId}/settings` pins a client or adds a label.
 - `GET /api/v1/workspace/approvals` is the cross-client queue of submitted journals you may approve. `POST /api/v1/workspace/approvals/bulk` approves up to 100 through the same rules and audit events as the per-company screen, each in its own transaction, and never posts. The web app has a **Clients** page for both.
 
+## Where the features are in the web app
+
+| Feature | Screen |
+|---|---|
+| GSTR-2B reconciliation, supplier follow-up emails, draft bills | **GSTR-2B ITC** |
+| GSTR-3B working sheet, TDS challans, Form 26Q data | **GSTR-3B & TDS** |
+| Tally import (with preview) and export | **Tally import/export** |
+| Opening balances | **Opening balances** |
+| Fixed assets, depreciation runs, disposals | **Fixed assets** |
+| Cross-client status and bulk approvals | **Clients** |
+| MFA enrolment and recovery codes | **Security** |
+| Reverse charge on bills, TCS on invoices, TAN | **Overview** (India forms) |
+
+The screens are type-checked and built with `npm run build`, but have not been exercised in a browser against a running server, so expect some polish issues on first use.
+
 ## Session sign-in, CSRF and MFA (Flyway V10)
 
 - Browsers sign in with `POST /api/v1/auth/login` (`{email, password, totpCode?, recoveryCode?}`), which returns `401 {"mfaRequired":true}` when a second factor is needed, and `POST /api/v1/auth/logout`. `GET /api/v1/auth/csrf` issues the `XSRF-TOKEN` cookie, echoed in `X-XSRF-TOKEN`. CSRF is required for unsafe requests that carry a session cookie, and always for login and logout; Basic-header requests without a session cookie are exempt.

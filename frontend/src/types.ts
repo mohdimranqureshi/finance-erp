@@ -8,7 +8,7 @@ export type TrialRow = {
   accountId: number; code: string; name: string; accountType: string;
   debitTotal: number; creditTotal: number; lastEntryDate?: string | null;
 };
-export type View = 'overview' | 'clients' | 'company' | 'users' | 'security' | 'journals' | 'reports' | 'gstr2b' | 'tally' | 'ai';
+export type View = 'overview' | 'clients' | 'company' | 'users' | 'security' | 'journals' | 'reports' | 'gstr2b' | 'returns' | 'tally' | 'opening' | 'assets' | 'ai';
 
 /** Shared plumbing passed to every view: async runner, busy flag and the success-message sink. */
 export type Shell = {

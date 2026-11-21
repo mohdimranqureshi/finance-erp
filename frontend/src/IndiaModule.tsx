@@ -6,9 +6,9 @@ import InvoiceUpload from './InvoiceUpload';
 
 type Account = { id: number; code: string; name: string; accountType: string };
 type State = { code: string; name: string };
-type Reference = { states: State[]; gstRates: number[]; tdsSections: { section: string; description: string; indicativeRate: number }[] };
+type Reference = { states: State[]; gstRates: number[]; tdsSections: { section: string; description: string; indicativeRate: number }[]; tcsSections?: { section: string; description: string; indicativeRate: number }[] };
 type Party = { id: number; partyType: string; name: string; gstin?: string | null; stateCode: string };
-type Doc = { id: number; invoiceNumber?: string; vendorInvoiceNumber?: string; invoiceDate?: string; billDate?: string; customerName?: string; vendorName?: string; supplyType: string; taxableAmount: number; cgstAmount: number; sgstAmount: number; igstAmount: number; totalAmount: number; tdsAmount?: number; status: string; journalEntryId?: number | null; journalStatus?: string | null };
+type Doc = { id: number; invoiceNumber?: string; vendorInvoiceNumber?: string; invoiceDate?: string; billDate?: string; customerName?: string; vendorName?: string; supplyType: string; taxableAmount: number; cgstAmount: number; sgstAmount: number; igstAmount: number; totalAmount: number; tdsAmount?: number; tcsAmount?: number; reverseCharge?: boolean; status: string; journalEntryId?: number | null; journalStatus?: string | null };
 type Heads = { taxableValue: number; cgst: number; sgst: number; igst: number };
 type GstSummary = { outwardSupplies: Heads; eligibleItc: Heads; netByHead: { cgst: number; sgst: number; igst: number; total: number }; note: string };
 type Row = { accountId: number; code: string; name: string; amount: number };
@@ -23,20 +23,20 @@ export default function IndiaModule({ companyId, accounts, onLedgerChanged }: { 
   const base = `/api/v1/companies/${companyId}`;
   const [ref, setRef] = useState<Reference | null>(null);
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [message, setMessage] = useState('');
-  const [gstin, setGstin] = useState(''), [pan, setPan] = useState(''), [stateCode, setStateCode] = useState(''), [addr, setAddr] = useState(''), [city, setCity] = useState(''), [pin, setPin] = useState('');
+  const [gstin, setGstin] = useState(''), [pan, setPan] = useState(''), [tan, setTan] = useState(''), [stateCode, setStateCode] = useState(''), [addr, setAddr] = useState(''), [city, setCity] = useState(''), [pin, setPin] = useState('');
   const [parties, setParties] = useState<Party[]>([]), [invoices, setInvoices] = useState<Doc[]>([]), [bills, setBills] = useState<Doc[]>([]);
   const [pType, setPType] = useState('CUSTOMER'), [pName, setPName] = useState(''), [pGstin, setPGstin] = useState(''), [pState, setPState] = useState(''), [pAddr, setPAddr] = useState(''), [pCity, setPCity] = useState(''), [pPin, setPPin] = useState('');
-  const [invCustomer, setInvCustomer] = useState(''), [invDate, setInvDate] = useState(today()), [invDesc, setInvDesc] = useState(''), [invHsn, setInvHsn] = useState('998314'), [invQty, setInvQty] = useState('1'), [invPrice, setInvPrice] = useState(''), [invRate, setInvRate] = useState('18');
-  const [billVendor, setBillVendor] = useState(''), [billNo, setBillNo] = useState(''), [billDate, setBillDate] = useState(today()), [billDesc, setBillDesc] = useState(''), [billHsn, setBillHsn] = useState('998311'), [billPrice, setBillPrice] = useState(''), [billRate, setBillRate] = useState('18'), [billAccount, setBillAccount] = useState(''), [billItc, setBillItc] = useState(true), [tdsSection, setTdsSection] = useState(''), [tdsRate, setTdsRate] = useState('');
+  const [invCustomer, setInvCustomer] = useState(''), [invDate, setInvDate] = useState(today()), [invDesc, setInvDesc] = useState(''), [invHsn, setInvHsn] = useState('998314'), [invQty, setInvQty] = useState('1'), [invPrice, setInvPrice] = useState(''), [invRate, setInvRate] = useState('18'), [tcsSection, setTcsSection] = useState(''), [tcsRate, setTcsRate] = useState('');
+  const [billVendor, setBillVendor] = useState(''), [billNo, setBillNo] = useState(''), [billDate, setBillDate] = useState(today()), [billDesc, setBillDesc] = useState(''), [billHsn, setBillHsn] = useState('998311'), [billPrice, setBillPrice] = useState(''), [billRate, setBillRate] = useState('18'), [billAccount, setBillAccount] = useState(''), [billItc, setBillItc] = useState(true), [billRcm, setBillRcm] = useState(false), [tdsSection, setTdsSection] = useState(''), [tdsRate, setTdsRate] = useState('');
   const [suggestion, setSuggestion] = useState<Suggestion | null>(null);
   const [gst, setGst] = useState<GstSummary | null>(null), [pnl, setPnl] = useState<Pnl | null>(null), [sheet, setSheet] = useState<Sheet | null>(null);
 
   async function load() {
     const [p, i, b, prof] = await Promise.all([
       api<Party[]>(`${base}/parties`), api<Doc[]>(`${base}/sales-invoices`), api<Doc[]>(`${base}/purchase-bills`),
-      api<{ gstin?: string; pan?: string; stateCode?: string; addressLine?: string; city?: string; pincode?: string }>(`${base}/india/profile`)]);
+      api<{ gstin?: string; pan?: string; tan?: string; stateCode?: string; addressLine?: string; city?: string; pincode?: string }>(`${base}/india/profile`)]);
     setParties(p); setInvoices(i); setBills(b);
-    setGstin(prof.gstin || ''); setPan(prof.pan || ''); setStateCode(prof.stateCode || '');
+    setGstin(prof.gstin || ''); setPan(prof.pan || ''); setTan(prof.tan || ''); setStateCode(prof.stateCode || '');
     setAddr(prof.addressLine || ''); setCity(prof.city || ''); setPin(prof.pincode || '');
   }
   useEffect(() => {
@@ -51,7 +51,7 @@ export default function IndiaModule({ companyId, accounts, onLedgerChanged }: { 
   const post = (url: string, body?: unknown) => api<Doc>(url, { method: 'POST', body: JSON.stringify(body ?? {}) });
 
   const saveProfile = () => run(async () => {
-    await api(`${base}/india/profile`, { method: 'PUT', body: JSON.stringify({ gstin, pan, stateCode, addressLine: addr, city, pincode: pin }) });
+    await api(`${base}/india/profile`, { method: 'PUT', body: JSON.stringify({ gstin, pan, tan, stateCode, addressLine: addr, city, pincode: pin }) });
     setMessage('India GST profile saved.');
   });
   const seedChart = () => run(async () => {
@@ -63,8 +63,8 @@ export default function IndiaModule({ companyId, accounts, onLedgerChanged }: { 
     setPName(''); setPGstin(''); setPAddr(''); setPCity(''); setPPin(''); await load(); setMessage('Party added.');
   });
   const createInvoice = () => run(async () => {
-    await post(`${base}/sales-invoices`, { customerId: Number(invCustomer), invoiceDate: invDate, lines: [{ description: invDesc, hsnSac: invHsn, quantity: Number(invQty), unitPrice: Number(invPrice), gstRate: Number(invRate) }] });
-    setInvDesc(''); setInvPrice(''); await load(); setMessage('Draft invoice created with GST computed by place of supply.');
+    await post(`${base}/sales-invoices`, { customerId: Number(invCustomer), invoiceDate: invDate, tcsSection: tcsSection || null, tcsRate: tcsSection ? Number(tcsRate) : null, lines: [{ description: invDesc, hsnSac: invHsn, quantity: Number(invQty), unitPrice: Number(invPrice), gstRate: Number(invRate) }] });
+    setInvDesc(''); setInvPrice(''); setTcsSection(''); setTcsRate(''); await load(); setMessage('Draft invoice created with GST computed by place of supply.');
   });
   const issueInvoice = (id: number) => run(async () => {
     const d = await post(`${base}/sales-invoices/${id}/issue`);
@@ -72,11 +72,11 @@ export default function IndiaModule({ companyId, accounts, onLedgerChanged }: { 
   });
   const createBill = () => run(async () => {
     await post(`${base}/purchase-bills`, {
-      vendorId: Number(billVendor), vendorInvoiceNumber: billNo, billDate, itcEligible: billItc,
+      vendorId: Number(billVendor), vendorInvoiceNumber: billNo, billDate, itcEligible: billItc, reverseCharge: billRcm,
       tdsSection: tdsSection || null, tdsRate: tdsSection ? Number(tdsRate) : null,
       lines: [{ description: billDesc, hsnSac: billHsn, quantity: 1, unitPrice: Number(billPrice), gstRate: Number(billRate), expenseAccountId: billAccount ? Number(billAccount) : null }]
     });
-    setBillNo(''); setBillDesc(''); setBillPrice(''); await load(); setMessage('Draft purchase bill created.');
+    setBillNo(''); setBillDesc(''); setBillPrice(''); setBillRcm(false); await load(); setMessage('Draft purchase bill created.');
   });
   const bookBill = (id: number) => run(async () => {
     const d = await post(`${base}/purchase-bills/${id}/book`);
@@ -104,7 +104,7 @@ export default function IndiaModule({ companyId, accounts, onLedgerChanged }: { 
     <tr key={d.id}>
       <td className="mono">{kind === 'sale' ? d.invoiceNumber || `Draft #${d.id}` : d.vendorInvoiceNumber}</td>
       <td>{kind === 'sale' ? d.invoiceDate : d.billDate}</td><td>{kind === 'sale' ? d.customerName : d.vendorName}</td>
-      <td><span className="chip">{d.supplyType === 'INTER_STATE' ? 'IGST' : 'CGST+SGST'}</span></td>
+      <td><span className="chip">{d.supplyType === 'INTER_STATE' ? 'IGST' : 'CGST+SGST'}</span>{d.reverseCharge && <> <span className="chip">RCM</span></>}{!!Number(d.tcsAmount) && <> <span className="chip">TCS {money(Number(d.tcsAmount))}</span></>}</td>
       <td className="right">{money(d.taxableAmount)}</td><td className="right">{money(Number(d.cgstAmount) + Number(d.sgstAmount) + Number(d.igstAmount))}</td>
       {kind === 'bill' && <td className="right">{money(d.tdsAmount || 0)}</td>}
       <td className="right">{money(d.totalAmount)}</td>
@@ -120,6 +120,7 @@ export default function IndiaModule({ companyId, accounts, onLedgerChanged }: { 
       <form className="accountform" onSubmit={e => { e.preventDefault(); saveProfile(); }}>
         <label>GSTIN (blank if unregistered)<input value={gstin} onChange={e => setGstin(e.target.value.toUpperCase())} maxLength={15} placeholder="27AAPFU0939F1ZV" /></label>
         <label>PAN<input value={pan} onChange={e => setPan(e.target.value.toUpperCase())} maxLength={10} /></label>
+        <label>TAN (for TDS returns)<input value={tan} onChange={e => setTan(e.target.value.toUpperCase())} maxLength={10} placeholder="MUMA12345B" pattern="[A-Z]{4}[0-9]{5}[A-Z]|" /></label>
         <label>State<select value={stateCode} onChange={e => setStateCode(e.target.value)} required><option value="">Select state</option>{stateOptions}</select></label>
         <label>Address<input value={addr} onChange={e => setAddr(e.target.value)} maxLength={200} /></label>
         <label>City<input value={city} onChange={e => setCity(e.target.value)} maxLength={100} /></label>
@@ -157,6 +158,8 @@ export default function IndiaModule({ companyId, accounts, onLedgerChanged }: { 
         <label>Qty<input type="number" min="0.0001" step="any" value={invQty} onChange={e => setInvQty(e.target.value)} required /></label>
         <label>Unit price<input type="number" min="0.01" step="any" value={invPrice} onChange={e => setInvPrice(e.target.value)} required /></label>
         <label>GST %<select value={invRate} onChange={e => setInvRate(e.target.value)}>{(ref?.gstRates || [0, 5, 18]).map(r => <option key={r}>{r}</option>)}</select></label>
+        <label>TCS (206C)<select value={tcsSection} onChange={e => { setTcsSection(e.target.value); setTcsRate(String(ref?.tcsSections?.find(t => t.section === e.target.value)?.indicativeRate ?? '')); }}><option value="">None</option>{ref?.tcsSections?.map(t => <option key={t.section} value={t.section}>{t.description}</option>)}</select></label>
+        <label>TCS % (verify)<input type="number" min="0.001" max="20" step="0.001" value={tcsRate} onChange={e => setTcsRate(e.target.value)} disabled={!tcsSection} /></label>
         <button disabled={busy || !customers.length}><Plus size={15} />Create draft invoice</button>
       </form>
       <div className="tablewrap"><table><thead><tr><th>Invoice</th><th>Date</th><th>Customer</th><th>Tax</th><th className="right">Taxable</th><th className="right">GST</th><th className="right">Total</th><th>Action</th></tr></thead><tbody>
@@ -178,6 +181,7 @@ export default function IndiaModule({ companyId, accounts, onLedgerChanged }: { 
         <label>TDS section<select value={tdsSection} onChange={e => { setTdsSection(e.target.value); setTdsRate(String(ref?.tdsSections.find(t => t.section === e.target.value)?.indicativeRate ?? '')); }}><option value="">None</option>{ref?.tdsSections.map(t => <option key={t.section} value={t.section}>{t.section} — {t.description}</option>)}</select></label>
         <label>TDS % (verify)<input type="number" min="0.01" max="30" step="0.01" value={tdsRate} onChange={e => setTdsRate(e.target.value)} disabled={!tdsSection} /></label>
         <label><span>Claim ITC</span><input type="checkbox" checked={billItc} onChange={e => setBillItc(e.target.checked)} /></label>
+        <label title="Tick when the supplier's invoice carries no GST and you pay the tax yourself (for example an unregistered advocate). Pick the GST % that applies."><span>Reverse charge</span><input type="checkbox" checked={billRcm} onChange={e => setBillRcm(e.target.checked)} /></label>
         <button disabled={busy || !vendors.length}><Plus size={15} />Create draft bill</button>
         <button type="button" className="secondary" disabled={busy || !billDesc} onClick={suggest}><Sparkles size={15} />Suggest coding</button>
       </form>
