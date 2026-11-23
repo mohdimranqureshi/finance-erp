@@ -1,7 +1,7 @@
 package com.financeerp;
 
-import com.financeerp.india.IndiaTax;
-import com.financeerp.india.TdsRules;
+import com.financeerp.domain.IndiaTax;
+import com.financeerp.domain.TdsRules;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import java.math.BigDecimal;

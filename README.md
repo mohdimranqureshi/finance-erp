@@ -180,6 +180,21 @@ Set `AI_VISION_ENABLED=true` (and `AI_VISION_MODEL` if your text model cannot re
 - `GET /api/v1/workspace/clients[?search&status&sort]` lists every company you are a member of with draft, submitted and approvable journals, unmatched bank lines, the latest GSTR-2B import, overdue receivables and open old periods, plus a `closeStatus` (`CLEAN`, `ATTENTION` or `BLOCKED`) with reasons. `PUT .../workspace/clients/{companyId}/settings` pins a client or adds a label.
 - `GET /api/v1/workspace/approvals` is the cross-client queue of submitted journals you may approve. `POST /api/v1/workspace/approvals/bulk` approves up to 100 through the same rules and audit events as the per-company screen, each in its own transaction, and never posts. The web app has a **Clients** page for both.
 
+## Backend structure
+
+The backend (`backend/src/main/java/com/financeerp`) is layered **controller → service → repository**:
+
+| Package | Role | Rules |
+|---|---|---|
+| `controller` | REST endpoints | Thin: bind and validate HTTP input, call one service method. No SQL, no `CompanyAccess`, no repositories. |
+| `service` | Business rules | Validation, calculations, authorisation (`CompanyAccess`), transactions (`@Transactional`), audit. No `JdbcTemplate`, no SQL, no servlet types. |
+| `repository` | Data access | The only place with `JdbcTemplate` and SQL. No business rules; never imports controllers, services or security. |
+| `dto` | Request/response records | One holder per feature (for example `PurchaseBillDto.CreateRequest`). |
+| `domain` | Pure logic | Tax and depreciation rules, GSTR matcher and set-off, Tally parser/planner, `LedgerLine`. No Spring web/JDBC. |
+| `config`, `security`, `common` | Configuration, auth infrastructure (filters, `SecurityConfig`, ciphers), exception handling | Security infrastructure reads data through repositories. |
+
+Naming follows the feature: `PurchaseBillController` → `PurchaseBillService` → `PurchaseBillRepository`. Services call each other through their public methods (for example the AI proposal flow calls `PurchaseBillService.create`). `LayeringTest` scans the source tree and fails the build if these rules are broken, so SQL cannot leak back into controllers or services.
+
 ## Where the features are in the web app
 
 | Feature | Screen |

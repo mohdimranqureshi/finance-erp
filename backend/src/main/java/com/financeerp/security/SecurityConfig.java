@@ -1,5 +1,6 @@
 package com.financeerp.security;
 
+import com.financeerp.repository.UserRepository;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -8,7 +9,6 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.PropertySource;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.CredentialsExpiredException;
 import org.springframework.security.authentication.DefaultAuthenticationEventPublisher;
@@ -43,7 +43,7 @@ public class SecurityConfig {
 	private static final Logger log = LoggerFactory.getLogger(SecurityConfig.class);
 	static final String LOGIN_PATH = "/api/v1/auth/login";
 	static final String LOGOUT_PATH = "/api/v1/auth/logout";
-	static final String GENERIC_LOGIN_FAILURE = "Invalid email or password, or the account is temporarily locked.";
+	public static final String GENERIC_LOGIN_FAILURE = "Invalid email or password, or the account is temporarily locked.";
 	private static final Set<String> SAFE_METHODS = Set.of("GET", "HEAD", "TRACE", "OPTIONS");
 
 	// No WWW-Authenticate header, so browsers show the app's own error instead of a native login dialog.
@@ -73,7 +73,7 @@ public class SecurityConfig {
 
 	@Bean
 	SecurityFilterChain securityFilterChain(HttpSecurity http, UserDetailsService users, PasswordEncoder encoder,
-			ApplicationEventPublisher events, JdbcTemplate jdbc, CookieCsrfTokenRepository csrfTokenRepository,
+			ApplicationEventPublisher events, UserRepository userRepository, CookieCsrfTokenRepository csrfTokenRepository,
 			HttpSessionSecurityContextRepository sessionContextRepository,
 			@Value("${app.security.basic-auth-enabled:true}") boolean basicAuthEnabled,
 			@Value("${app.security.session-absolute-timeout:12h}") Duration absoluteTimeout) throws Exception {
@@ -103,7 +103,7 @@ public class SecurityConfig {
 						.permitAll().requestMatchers("/api/v1/auth/register", "/api/v1/admin/**").hasRole("ADMIN")
 						.anyRequest().authenticated())
 				.exceptionHandling(ex -> ex.authenticationEntryPoint(JSON_401).accessDeniedHandler(JSON_403))
-				.addFilterBefore(new SessionValidationFilter(jdbc, absoluteTimeout), AnonymousAuthenticationFilter.class)
+				.addFilterBefore(new SessionValidationFilter(userRepository, absoluteTimeout), AnonymousAuthenticationFilter.class)
 				.formLogin(form -> form.disable()).logout(logout -> logout.disable());
 		if (basicAuthEnabled)
 			http.authenticationManager(basicAuthenticationManager(users, encoder, events))
@@ -160,7 +160,7 @@ public class SecurityConfig {
 	 * Password verification for the session login. No event publisher: lockout bookkeeping is done explicitly by
 	 * the login endpoint so that a correct password alone does not reset failed second-factor attempts.
 	 */
-	static AuthenticationManager passwordAuthenticationManager(UserDetailsService users, PasswordEncoder encoder) {
+	public static AuthenticationManager passwordAuthenticationManager(UserDetailsService users, PasswordEncoder encoder) {
 		DaoAuthenticationProvider provider = new DaoAuthenticationProvider();
 		provider.setUserDetailsService(users);
 		provider.setPasswordEncoder(encoder);

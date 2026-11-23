@@ -5,7 +5,7 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.financeerp.repository.UserRepository;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -13,7 +13,6 @@ import org.springframework.security.web.context.HttpSessionSecurityContextReposi
 import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
 import java.time.Duration;
-import java.util.List;
 
 /**
  * Revokes browser sessions on every request when the account was disabled or its session_version changed
@@ -25,11 +24,11 @@ public class SessionValidationFilter extends OncePerRequestFilter {
 	public static final String VERSION_ATTR = "financeerp.auth.sessionVersion";
 	public static final String LOGIN_AT_ATTR = "financeerp.auth.loginAt";
 
-	private final JdbcTemplate jdbc;
+	private final UserRepository users;
 	private final Duration absoluteTimeout;
 
-	public SessionValidationFilter(JdbcTemplate jdbc, Duration absoluteTimeout) {
-		this.jdbc = jdbc;
+	public SessionValidationFilter(UserRepository users, Duration absoluteTimeout) {
+		this.users = users;
 		this.absoluteTimeout = absoluteTimeout;
 	}
 
@@ -57,8 +56,7 @@ public class SessionValidationFilter extends OncePerRequestFilter {
 			return false;
 		if (System.currentTimeMillis() - started > absoluteTimeout.toMillis())
 			return false;
-		List<Integer> rows = jdbc.query("SELECT session_version FROM app_users WHERE email=? AND active",
-				(rs, i) -> rs.getInt(1), email);
-		return !rows.isEmpty() && rows.get(0).intValue() == expected.intValue();
+		Integer current = users.findActiveSessionVersion(email);
+		return current != null && current.intValue() == expected.intValue();
 	}
 }

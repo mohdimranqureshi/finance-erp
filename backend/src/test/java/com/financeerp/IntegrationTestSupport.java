@@ -1,4 +1,5 @@
 package com.financeerp;
+import com.financeerp.service.LlmClient;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -44,7 +45,7 @@ public abstract class IntegrationTestSupport {
 	@Autowired
 	protected PasswordEncoder encoder;
 	@MockitoBean
-	protected com.financeerp.ai.LlmClient llm;
+	protected com.financeerp.service.LlmClient llm;
 
 	/** An Indian GST-registered company (Maharashtra) with the India chart seeded, an owner and an independent approver. */
 	protected record TestCompany(long id, String url, TestRestTemplate owner, TestRestTemplate approver) {

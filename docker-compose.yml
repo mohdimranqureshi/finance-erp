@@ -29,6 +29,9 @@ services:
       DB_URL: jdbc:postgresql://postgres:5432/finance_erp
       DB_USERNAME: finance_erp
       DB_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      # Required in the prod profile: encrypts two-factor secrets. Generate once and keep it; changing it
+      # makes already-enrolled authenticator secrets unreadable.
+      MFA_ENCRYPTION_KEY: ${MFA_ENCRYPTION_KEY:?set MFA_ENCRYPTION_KEY (see .env.example)}
       BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-}
       BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-}
     ports:

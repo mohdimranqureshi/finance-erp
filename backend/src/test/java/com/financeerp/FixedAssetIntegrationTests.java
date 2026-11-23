@@ -1,6 +1,6 @@
 package com.financeerp;
 
-import com.financeerp.india.Depreciation;
+import com.financeerp.domain.Depreciation;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import java.math.BigDecimal;

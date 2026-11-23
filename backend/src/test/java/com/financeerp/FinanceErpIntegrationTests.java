@@ -1,6 +1,7 @@
 package com.financeerp;
+import com.financeerp.service.LlmClient;
 
-import com.financeerp.india.IndiaTax;
+import com.financeerp.domain.IndiaTax;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -33,7 +34,7 @@ class FinanceErpIntegrationTests {
     @Autowired TestRestTemplate rest;
     @Autowired JdbcTemplate jdbc;
     @Autowired org.springframework.security.crypto.password.PasswordEncoder encoder;
-    @org.springframework.test.context.bean.override.mockito.MockitoBean com.financeerp.ai.LlmClient llm;
+    @org.springframework.test.context.bean.override.mockito.MockitoBean com.financeerp.service.LlmClient llm;
 
     @Test void companyAccessPeriodControlAndJournalReversalWorkTogether() {
         String base = "http://localhost:" + port;

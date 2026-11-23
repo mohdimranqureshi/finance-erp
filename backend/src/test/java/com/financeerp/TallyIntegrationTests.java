@@ -1,6 +1,6 @@
 package com.financeerp;
 
-import com.financeerp.tally.TallyXmlParser;
+import com.financeerp.domain.TallyXmlParser;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.core.io.ByteArrayResource;

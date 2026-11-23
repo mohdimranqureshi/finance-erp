@@ -1,9 +1,9 @@
 package com.financeerp.security;
 
+import com.financeerp.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -14,7 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
  */
 @Component
 public class BootstrapAdminRunner implements ApplicationRunner {
-	private final JdbcTemplate jdbc;
+	private final UserRepository users;
 	private final PasswordEncoder encoder;
 	@Value("${app.bootstrap-admin.email:${BOOTSTRAP_ADMIN_EMAIL:}}")
 	private String email;
@@ -23,8 +23,8 @@ public class BootstrapAdminRunner implements ApplicationRunner {
 	@Value("${app.bootstrap-admin.display-name:FinoraAI Administrator}")
 	private String displayName;
 
-	public BootstrapAdminRunner(JdbcTemplate jdbc, PasswordEncoder encoder) {
-		this.jdbc = jdbc;
+	public BootstrapAdminRunner(UserRepository users, PasswordEncoder encoder) {
+		this.users = users;
 		this.encoder = encoder;
 	}
 
@@ -39,20 +39,16 @@ public class BootstrapAdminRunner implements ApplicationRunner {
 		if (password.length() < 16 || password.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > 72)
 			throw new IllegalStateException(
 					"BOOTSTRAP_ADMIN_PASSWORD must contain at least 16 characters and at most 72 UTF-8 bytes.");
-		Integer existing = jdbc.queryForObject("SELECT count(*) FROM app_users WHERE lower(email)=lower(?)",
-				Integer.class, normalized);
+		Integer existing = users.countByEmail(normalized);
 		if (existing != null && existing > 0) {
 			// Never reset or overwrite an existing account's password during application
 			// startup.
 			return;
 		}
-		jdbc.update("INSERT INTO app_users(email,password_hash,display_name,is_admin) VALUES (?,?,?,TRUE)", normalized,
-				encoder.encode(password),
+		users.insertAdmin(normalized, encoder.encode(password),
 				displayName == null || displayName.isBlank() ? "FinoraAI Administrator" : displayName.trim());
 		// Bootstrap only creates the identity. The first company owner must be assigned
 		// through the normal audited company workflow.
-		jdbc.update(
-				"INSERT INTO audit_events(company_id,actor,action,entity_type,entity_id,details) VALUES (NULL,?,'BOOTSTRAP_ADMIN_CREATED','USER',?,jsonb_build_object('email',?))",
-				"SYSTEM_BOOTSTRAP", normalized, normalized);
+		users.insertBootstrapAdminAudit("SYSTEM_BOOTSTRAP", normalized, normalized);
 	}
 }
