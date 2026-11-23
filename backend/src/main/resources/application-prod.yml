@@ -63,8 +63,8 @@ app:
     # Browsers use the session login; HTTP Basic headers are ignored entirely in production.
     basic-auth-enabled: false
     mfa-encryption-key: ${MFA_ENCRYPTION_KEY:}
-    # Startup fails without MFA_ENCRYPTION_KEY rather than silently using a throwaway key.
-    mfa-allow-ephemeral-key: false
+    # Temporary: allow startup without MFA_ENCRYPTION_KEY, but MFA secrets won't survive a restart.
+    mfa-allow-ephemeral-key: true
   bootstrap-admin:
     email: ${BOOTSTRAP_ADMIN_EMAIL:}
     password: ${BOOTSTRAP_ADMIN_PASSWORD:}
