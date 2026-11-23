@@ -196,7 +196,7 @@ public class SecurityConfig {
 		if (!allowEphemeral)
 			throw new IllegalStateException("MFA_ENCRYPTION_KEY (app.security.mfa-encryption-key) is required: "
 					+ "set it to a base64-encoded random 32-byte key, e.g. `openssl rand -base64 32`, "
-					+ "stored in your secret manager.");
+					+ "stored in your secret manager. Diagnosis: " + describeMfaEnvironment());
 		log.warn("**************************************************************************************");
 		log.warn("MFA_ENCRYPTION_KEY is not set: using an EPHEMERAL key. TOTP secrets enrolled now become");
 		log.warn("unusable after a restart. Never run like this outside local development.");
@@ -204,6 +204,18 @@ public class SecurityConfig {
 		byte[] ephemeral = new byte[32];
 		new SecureRandom().nextBytes(ephemeral);
 		return new MfaSecretCipher(ephemeral);
+	}
+
+	/** Names and lengths only, never values, so a misspelt or blank variable can be found from the startup error. */
+	static String describeMfaEnvironment() {
+		String exact = System.getenv("MFA_ENCRYPTION_KEY");
+		String state = exact == null ? "environment variable MFA_ENCRYPTION_KEY is NOT set in this process"
+				: exact.isBlank() ? "environment variable MFA_ENCRYPTION_KEY is set but BLANK"
+				: "environment variable MFA_ENCRYPTION_KEY is set (" + exact.trim().length() + " characters)";
+		java.util.List<String> similar = System.getenv().keySet().stream()
+				.filter(n -> n.toUpperCase(java.util.Locale.ROOT).contains("MFA") || n.toUpperCase(java.util.Locale.ROOT).contains("ENCRYPTION"))
+				.sorted().map(n -> "'" + n + "'").toList();
+		return state + "; variables whose name contains MFA or ENCRYPTION: " + (similar.isEmpty() ? "none" : similar) + ".";
 	}
 
 	@Bean
